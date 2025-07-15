@@ -60,7 +60,7 @@ jobs:
 
       - name: Run SonarQube analysis
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_KEY: ${{ secrets.SONAR_KEY }}
         run: |
           npm install -g sonar-scanner
           sonar-scanner
