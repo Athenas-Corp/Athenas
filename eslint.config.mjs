@@ -32,12 +32,7 @@ export default tseslint.config(
       '@typescript-eslint/explicit-function-return-type': 'error',
       '@typescript-eslint/no-floating-promises': 'warn',
       '@typescript-eslint/no-unsafe-argument': 'error',
-<<<<<<< HEAD
-      'no-console': ['error', { allow: ['error'] }],
-
-=======
       'no-console': 'error',
->>>>>>> origin/main
       '@typescript-eslint/array-type': ['error', { default: 'array-simple' }],
       '@typescript-eslint/consistent-type-definitions': ['error', 'interface'],
     },
