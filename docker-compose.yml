@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7
+    container_name: athenas-redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    command: ['redis-server', '--appendonly', 'yes']
+    networks:
+      - athenas-net
+
+  postgres:
+    image: postgres:16
+    container_name: athenas-postgres
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: 123mudar
+      POSTGRES_DB: athenas
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - athenas-net
+
+  mongodb:
+    image: mongo:6
+    container_name: athenas-mongodb
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - athenas-net
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: athenas-rabbitmq
+    ports:
+      - '5672:5672'
+      - '15672:15672' # painel admin (http://localhost:15672)
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: 123mudar
+    networks:
+      - athenas-net
+
+volumes:
+  postgres-data:
+  redis-data:
+  mongo-data:
+
+networks:
+  athenas-net:
+    driver: bridge
