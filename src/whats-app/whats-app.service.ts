@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 import { Injectable, Logger } from '@nestjs/common';
 import { Client, LocalAuth, Message } from 'whatsapp-web.js';
-import qrcode from 'qrcode-terminal';
+import { generate } from 'qrcode-terminal';
 
 @Injectable()
 export class WhatsAppService {
@@ -21,7 +21,7 @@ export class WhatsAppService {
 
     client.on('qr', (qr: string) => {
       this.logger.log(`Escaneie o QR Code da sessão "${sessionId}":`);
-      qrcode.generate(qr, { small: true });
+      generate(qr, { small: true }); // Use a função importada diretamente
     });
 
     client.on('ready', () => {
