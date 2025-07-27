@@ -87,10 +87,26 @@
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
+    "collectCoverage": true,
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "**/*.{ts,js}",
+      "!**/*.module.ts",
+      "!**/main.ts",
+      "!**/constants/**",
+      "!**/dto/**",
+      "!**/entities/**",
+      "!**/interfaces/**",
+      "!**/__mocks__/**",
+      "!**/*.d.ts"
     ],
     "coverageDirectory": "../coverage",
+    "coverageReporters": [
+      "json",
+      "lcov",
+      "text",
+      "clover",
+      "html"
+    ],
     "testEnvironment": "node"
   }
 }
