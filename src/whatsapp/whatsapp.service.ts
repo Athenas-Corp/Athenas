@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Client, LocalAuth, Message } from 'whatsapp-web.js';
 import * as qrcode from 'qrcode-terminal';
-import { Model, UpdateResult } from 'mongoose';
+import { Error, Model, UpdateResult } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 
 interface WhatsAppSession {
@@ -172,6 +172,55 @@ export class WhatsAppService {
       );
     } else {
       this.logger.error(`[${sessionId}] ${context}: Erro desconhecido`, error);
+    }
+  }
+
+  private formatPhoneNumber(number: string): string {
+    const cleaned = number.replace(/\D/g, '');
+    return `${cleaned}@c.us`;
+  }
+
+  async sendMessage(
+    sessionId: string,
+    number: string,
+    message: string,
+  ): Promise<{ status: string; messageId?: string; error?: string }> {
+    const client = this.sessions.get(sessionId);
+
+    if (!client) {
+      this.logger.error(`Sessão ${sessionId} não está ativa.`);
+      return {
+        status: 'error',
+        error: `Sessão ${sessionId} não está ativa.`,
+      };
+    }
+
+    const formattedNumber = this.formatPhoneNumber(number);
+
+    try {
+      const messageResponse = await client.sendMessage(
+        formattedNumber,
+        message,
+      );
+
+      return {
+        status: 'success',
+        messageId: messageResponse.id.id,
+      };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : JSON.stringify(error, Object.getOwnPropertyNames(error));
+
+      this.logger.error(
+        `Erro ao enviar mensagem para ${formattedNumber} na sessão ${sessionId}: ${errorMessage}`,
+      );
+
+      return {
+        status: 'error',
+        error: errorMessage,
+      };
     }
   }
 }
