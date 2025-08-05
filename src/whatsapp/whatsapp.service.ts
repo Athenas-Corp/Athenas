@@ -37,7 +37,7 @@ export class WhatsAppService {
         this.logger.log(`Sessão reconectada: ${session.sessionId}`);
       } catch (error) {
         this.logger.error(
-          `Erro ao reconectar sessão ${session.sessionId}:`,
+          `Erro ao reconectar sessão... ${session.sessionId}:`,
           error,
         );
       }
