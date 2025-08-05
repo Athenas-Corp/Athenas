@@ -84,8 +84,8 @@
       "json",
       "ts"
     ],
-    "rootDir": ".",
-    "testRegex": "src/.*\\.spec\\.ts$",
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
@@ -93,6 +93,11 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
+    "coverageReporters": [
+      "html",
+      "text",
+      "json-summary"
+    ],
     "testEnvironment": "node"
   }
 }
