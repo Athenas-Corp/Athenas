@@ -1,5 +1,9 @@
-import { registerAs } from '@nestjs/config';
+import { MongooseModuleOptions } from '@nestjs/mongoose';
+import { ConfigService } from '@nestjs/config';
 
-export default registerAs('mongoose', () => ({
-  uri: process.env.MONGO_URI,
-}));
+export const mongooseConfig = {
+  useFactory: (configService: ConfigService): MongooseModuleOptions => ({
+    uri: configService.get<string>('MONGO_URI'),
+  }),
+  inject: [ConfigService],
+};
