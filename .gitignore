@@ -63,12 +63,6 @@ prisma/migrations/
 /coverage/
 /.nyc_output/
 
-# Test environment files
-*.test.js
-*.spec.js
-*.test.ts
-*.spec.ts
-
 # Docker
 docker-compose.override.yml
 docker-compose.debug.yml
