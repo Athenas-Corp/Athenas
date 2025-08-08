@@ -82,7 +82,7 @@ jobs:
 
       - name: SonarQube Quality Gate Check
         if: github.event_name == 'pull_request' || github.ref_name != 'main'
-        uses: sonarqube-quality-gate-action@master
+        uses: craicover/sonarqube-quality-gate-action@master
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
