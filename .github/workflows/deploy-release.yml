@@ -39,10 +39,18 @@ jobs:
           npm run lint
           npm run test:cov -- --testPathPattern=".*\.service\.spec\.ts$" --collectCoverageFrom="src/**/*.service.ts"
 
-          COVERAGE=$(node -p "require('./coverage/coverage-summary.json').total.lines.pct")
-          echo "Test Coverage: $COVERAGE%"
-          if (( $(echo "$COVERAGE < 60" | bc -l) )); then
-            echo "❌ Deploy cancelado - Cobertura abaixo de 60%"
+          # Verificar se o arquivo de coverage existe
+          if [ -f "coverage/coverage-summary.json" ]; then
+            COVERAGE=$(node -p "JSON.parse(require('fs').readFileSync('coverage/coverage-summary.json', 'utf8')).total.lines.pct || 0")
+            echo "Test Coverage: $COVERAGE%"
+            if [ $(echo "$COVERAGE < 60" | bc -l) -eq 1 ]; then
+              echo "❌ Deploy cancelado - Cobertura abaixo de 60% (atual: $COVERAGE%)"
+              exit 1
+            fi
+            echo "✅ Cobertura de $COVERAGE% está adequada"
+          else
+            echo "❌ Arquivo de cobertura não encontrado"
+            ls -la coverage/ || echo "Pasta coverage não existe"
             exit 1
           fi
 
@@ -52,18 +60,24 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npm install -g sonar-scanner
+
+          echo "🚀 Análise final SonarQube antes do deploy..."
+
           sonar-scanner \
-            -Dsonar.projectKey=${{ github.repository }} \
+            -X \
+            -Dsonar.projectKey=${{ github.repository_owner }}_${{ github.event.repository.name }} \
             -Dsonar.organization=${{ github.repository_owner }} \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.login=${{ secrets.SONAR_TOKEN }} \
             -Dsonar.sources=src \
             -Dsonar.tests=src \
             -Dsonar.test.inclusions="**/*.spec.ts" \
-            -Dsonar.exclusions="**/*.spec.ts,**/node_modules/**" \
+            -Dsonar.exclusions="**/*.spec.ts,**/node_modules/**,**/dist/**" \
             -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info \
-            -Dsonar.testExecutionReportPaths=coverage/test-report.xml \
-            -Dsonar.qualitygate.wait=true
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
+            -Dsonar.coverage.exclusions="**/*.spec.ts,**/*.module.ts" \
+            -Dsonar.qualitygate.wait=true \
+            -Dsonar.qualitygate.timeout=300
 
       - name: Get current version and calculate next version
         id: version
