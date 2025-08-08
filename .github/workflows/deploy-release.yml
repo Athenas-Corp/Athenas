@@ -120,6 +120,9 @@ jobs:
 
       - name: Commit version update
         run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Hagave/Athenas.git
           git add package.json package-lock.json
           git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }} [skip ci]" || true
           git push origin main
