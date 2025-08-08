@@ -60,33 +60,12 @@ jobs:
       - name: Final SonarQube analysis
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npm install -g sonar-scanner
 
-          BRANCH_NAME=$(echo "$GITHUB_REF" | sed 's|refs/heads/||')
-
-          echo "Running SonarScanner on branch: $BRANCH_NAME"
-
-          ARGS="-Dsonar.projectKey=Hagave_Athenas \
-                -Dsonar.organization=hagave \
-                -Dsonar.host.url=https://sonarcloud.io \
-                -Dsonar.login=${SONAR_TOKEN} \
-                -Dsonar.sources=src \
-                -Dsonar.tests=src \
-                -Dsonar.test.inclusions=**/*.spec.ts \
-                -Dsonar.exclusions=**/*.spec.ts,**/node_modules/**,**/dist/** \
-                -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info \
-                -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-                -Dsonar.coverage.exclusions=**/*.spec.ts,**/*.module.ts \
-                -Dsonar.qualitygate.wait=true \
-                -Dsonar.qualitygate.timeout=300"
-
-          if [ "$BRANCH_NAME" != "main" ]; then
-            ARGS="$ARGS -Dsonar.branch.name=$BRANCH_NAME"
-          fi
-
-          sonar-scanner $ARGS
+          sonar-scanner \
+            -Dsonar.login=${SONAR_TOKEN} \
+            -Dsonar.branch.name=main
 
       - name: Get current version and calculate next version
         id: version
