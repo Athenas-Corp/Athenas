@@ -64,6 +64,11 @@ jobs:
         run: |
           npm install -g sonar-scanner
 
+          # Extrai o nome da branch da variável GITHUB_REF (ex: refs/heads/main -> main)
+          BRANCH_NAME=$(echo "${GITHUB_REF}" | sed 's|refs/heads/||')
+
+          echo "Running SonarScanner on branch: $BRANCH_NAME"
+
           sonar-scanner \
             -Dsonar.projectKey=Hagave_Athenas \
             -Dsonar.organization=hagave \
@@ -78,7 +83,7 @@ jobs:
             -Dsonar.coverage.exclusions="**/*.spec.ts,**/*.module.ts" \
             -Dsonar.qualitygate.wait=true \
             -Dsonar.qualitygate.timeout=300 \
-            -Dsonar.branch.name=${{ github.ref_name }}
+            -Dsonar.branch.name=$BRANCH_NAME
 
       - name: Get current version and calculate next version
         id: version
