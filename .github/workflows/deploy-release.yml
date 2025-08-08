@@ -64,8 +64,11 @@ jobs:
           npm install -g sonar-scanner
 
           sonar-scanner \
+            -Dsonar.projectKey=Athenas \
+            -Dsonar.organization=hagave \
+            -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.login=${SONAR_TOKEN} \
-            -Dsonar.branch.name=main
+            -Dsonar.branch.name=${GITHUB_REF#refs/heads/}
 
       - name: Get current version and calculate next version
         id: version
