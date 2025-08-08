@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { WhatsAppService } from '../whatsapp.service';
+import { WhatsAppService } from '../services/whatsapp.service';
 import { getModelToken } from '@nestjs/mongoose';
 import { Client } from 'whatsapp-web.js';
 import { WhatsAppSession } from '../interfaces/session.interface';

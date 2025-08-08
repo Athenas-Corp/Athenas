@@ -36,18 +36,6 @@ services:
     networks:
       - athenas-net
 
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: athenas-rabbitmq
-    ports:
-      - '5672:5672'
-      - '15672:15672' # painel admin (http://localhost:15672)
-    environment:
-      RABBITMQ_DEFAULT_USER: admin
-      RABBITMQ_DEFAULT_PASS: 123mudar
-    networks:
-      - athenas-net
-
 volumes:
   postgres-data:
   redis-data:

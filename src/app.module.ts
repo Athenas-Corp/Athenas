@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
-import { WhatsAppModule } from './whatsapp/whatsapp.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { WhatsAppModule } from './whatsapp/modules/whatsapp.module';
+import { AgendamentosModule } from './agendamentos/agendamentos.module';
+import { AutoAtendimentoModule } from './auto-atendimento/auto-atendimento.module';
 
 @Module({
   imports: [
@@ -18,7 +21,10 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module';
         };
       },
     }),
+    ScheduleModule.forRoot(),
     WhatsAppModule,
+    AgendamentosModule,
+    AutoAtendimentoModule,
   ],
 })
 export class AppModule {}
