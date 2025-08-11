@@ -3,7 +3,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import { BadRequestException } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bull';
 import { AgendamentosService } from '../agendamentos.service';
-import { Agendamento } from 'src/models/schemas/AgendamentosSchema/agendamentos.schema';
+import { Agendamento } from '../../models/schemas/AgendamentosSchema/agendamentos.schema';
 
 describe('AgendamentosService', () => {
   let service: AgendamentosService;
