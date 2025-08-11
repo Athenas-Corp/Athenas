@@ -65,7 +65,7 @@ jobs:
 
           sonar-scanner \
             -Dsonar.projectKey=Athenas \
-            -Dsonar.organization=hagave \
+            -Dsonar.organization=Athenas-Corp \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.login=${SONAR_TOKEN} \
             -Dsonar.branch.name=${GITHUB_REF#refs/heads/}
