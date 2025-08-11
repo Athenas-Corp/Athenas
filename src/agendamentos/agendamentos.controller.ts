@@ -6,7 +6,7 @@ import { CreateAgendamentoDto } from './dto/create-agendamento.dto';
 export class AgendamentosController {
   constructor(private readonly agendamentosService: AgendamentosService) {}
 
-  @Post('criar')
+  @Post('criarAgendamento')
   async criarAgendamento(
     @Body() createAgendamentoDto: CreateAgendamentoDto,
   ): Promise<{ message: string }> {

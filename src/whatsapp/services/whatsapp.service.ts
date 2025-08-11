@@ -1,19 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Client, LocalAuth, Message } from 'whatsapp-web.js';
 import * as qrcode from 'qrcode-terminal';
-import { Error, Model, UpdateResult } from 'mongoose';
+import { Model, UpdateResult } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
+import { formatPhoneNumber } from '../../../utils/helper/phone.helper';
 
 interface WhatsAppSession {
   sessionId: string;
   status: string;
-}
-
-// Extensão segura para acessar notifyName sem usar any
-interface MessageWithNotifyName extends Message {
-  _data?: {
-    notifyName?: string;
-  };
 }
 
 @Injectable()
@@ -28,89 +22,112 @@ export class WhatsAppService {
 
   async onModuleInit(): Promise<void> {
     this.logger.log('Iniciando sessões salvas no banco...');
-
     const sessions = await this.sessionModel.find({ status: 'ready' }).exec();
 
     for (const session of sessions) {
       try {
-        await this.startSession(session.sessionId);
+        await this.startSession(session.sessionId, false);
         this.logger.log(`Sessão reconectada: ${session.sessionId}`);
       } catch (error) {
         this.logger.error(
-          `Erro ao reconectar sessão... ${session.sessionId}:`,
+          `Erro ao reconectar sessão ${session.sessionId}:`,
           error,
         );
       }
     }
   }
 
-  async startSession(
-    sessionId: string,
-  ): Promise<{ status: string; sessionId: string }> {
-    try {
-      if (this.sessions.has(sessionId)) {
-        this.logger.log(`Sessão já existe: ${sessionId}`);
-        return { status: 'already-started', sessionId };
-      }
+  async createNewSession(clientName: string): Promise<string> {
+    const sessionId = clientName;
 
-      const client = new Client({
-        authStrategy: new LocalAuth({ clientId: sessionId }),
+    try {
+      await this.sessionModel.create({
+        sessionId: sessionId,
+        status: 'pending',
+        clientName,
       });
 
-      this.sessions.set(sessionId, client);
-
-      try {
-        this.registerClientEvents(client, sessionId);
-      } catch (error: unknown) {
-        this.logUnknownError(
-          error,
-          sessionId,
-          'Erro ao registrar eventos do client',
-        );
-        return { status: 'error', sessionId };
-      }
-
-      await client.initialize();
-
-      return { status: 'initializing', sessionId };
+      await this.startSession(sessionId, true);
     } catch (error: unknown) {
+      if (error instanceof Error) {
+        this.logger.error(`Erro ao criar nova sessão: ${error.message}`);
+      } else {
+        this.logger.error('Erro desconhecido ao criar nova sessão', error);
+      }
+    }
+
+    return sessionId;
+  }
+
+  async startSession(
+    sessionId: string,
+    showQrCode = true,
+  ): Promise<{ status: string; sessionId: string }> {
+    if (this.sessions.has(sessionId)) {
+      this.logger.log(`Sessão já existe: ${sessionId}`);
+      return { status: 'already-started', sessionId };
+    }
+
+    const client = new Client({
+      authStrategy: new LocalAuth({ clientId: sessionId }),
+    });
+
+    this.sessions.set(sessionId, client);
+
+    this.registerClientEvents(client, sessionId, showQrCode);
+
+    try {
+      await client.initialize();
+      return { status: 'initializing', sessionId };
+    } catch (error) {
       this.logUnknownError(error, sessionId, 'Erro geral em startSession');
       return { status: 'error', sessionId };
     }
   }
 
-  private registerClientEvents(client: Client, sessionId: string): void {
-    try {
-      client.on('qr', (qr: string) => this.handleQr(qr, sessionId));
+  private registerClientEvents(
+    client: Client,
+    sessionId: string,
+    showQrCode: boolean,
+  ): void {
+    if (showQrCode) {
+      client.on('qr', (qr) => {
+        qrcode.generate(qr, { small: true });
+        this.logger.log(`QR Code gerado para sessão: ${sessionId}`);
+      });
+    }
 
-      client.on('ready', () => {
-        void this.handleReady(sessionId).catch((error) =>
-          this.logUnknownError(error, sessionId, 'Erro no evento ready'),
+    client.on('ready', () => {
+      this.handleReady(sessionId).catch((err) => {
+        this.logger.error(`Erro no handleReady: ${err}`);
+      });
+    });
+
+    client.on('authenticated', () => {
+      this.handleAuthenticated(sessionId);
+    });
+
+    client.on('disconnected', (reason) => {
+      (async (): Promise<void> => {
+        this.logger.warn(`Sessão ${sessionId} desconectada: ${reason}`);
+        await this.sessionModel.updateOne(
+          { sessionId },
+          { status: 'disconnected' },
+        );
+        this.sessions.delete(sessionId);
+      })().catch((err: unknown) => {
+        this.logger.error(
+          `Erro ao processar desconexão da sessão ${sessionId}`,
+          err,
         );
       });
+    });
 
-      client.on('authenticated', () => this.handleAuthenticated(sessionId));
-
-      client.on('message', (message: Message) => {
-        void this.handleMessage(message, sessionId).catch((error) =>
-          this.logUnknownError(error, sessionId, 'Erro no evento message'),
-        );
+    client.on('message', (message: Message) => {
+      this.handleMessage(message, sessionId).catch((err) => {
+        this.logger.error(`Erro no handleMessage: ${err}`);
       });
-    } catch (error: unknown) {
-      this.logUnknownError(error, sessionId, 'Erro ao registrar eventos');
-      throw error;
-    }
-  }
-
-  private handleQr(qr: string, sessionId: string): void {
-    try {
-      this.logger.log(
-        `[${sessionId}] QR code recebido: ${qr.substring(0, 30)}...`,
-      );
-      qrcode.generate(qr, { small: true });
-    } catch (error: unknown) {
-      this.logUnknownError(error, sessionId, 'Erro ao gerar QR code');
-    }
+    });
   }
 
   private async handleReady(sessionId: string): Promise<void> {
@@ -123,7 +140,7 @@ export class WhatsAppService {
       this.logger.log(
         `[${sessionId}] Sessão salva/atualizada no MongoDB - matched: ${result.matchedCount}, modified: ${result.modifiedCount}`,
       );
-    } catch (error: unknown) {
+    } catch (error) {
       this.logUnknownError(
         error,
         sessionId,
@@ -133,10 +150,15 @@ export class WhatsAppService {
   }
 
   private handleAuthenticated(sessionId: string): void {
+    this.logger.log(`[${sessionId}] Cliente autenticado`);
+  }
+
+  private async getNotifyName(message: Message): Promise<string> {
     try {
-      this.logger.log(`[${sessionId}] Cliente autenticado`);
-    } catch (error: unknown) {
-      this.logUnknownError(error, sessionId, 'Erro no evento authenticated');
+      const contact = await message.getContact();
+      return contact.pushname || contact.name || 'meu consagrado';
+    } catch {
+      return 'meu consagrado';
     }
   }
 
@@ -148,14 +170,15 @@ export class WhatsAppService {
       if (message.body === '!ping') {
         await message.reply('Pong! 🏓');
         this.logger.log(`[${sessionId}] Respondeu ping para ${message.from}`);
-      } else {
-        const notifyName =
-          (message as MessageWithNotifyName)?._data?.notifyName ??
-          'meu consagrado';
-        this.logger.log(`[${sessionId}] Mensagem recebida: ${message.body}`);
-        await message.reply(`fala ai mano ${notifyName}`);
+        return;
       }
-    } catch (error: unknown) {
+
+      const notifyName = await this.getNotifyName(message);
+      this.logger.log(
+        `[${sessionId}] Mensagem recebida de ${notifyName}: ${message.body}`,
+      );
+      await message.reply(`Estou falando com ${notifyName}?`);
+    } catch (error) {
       this.logUnknownError(error, sessionId, 'Erro no listener de mensagem');
     }
   }
@@ -175,11 +198,6 @@ export class WhatsAppService {
     }
   }
 
-  private formatPhoneNumber(number: string): string {
-    const cleaned = number.replace(/\D/g, '');
-    return `${cleaned}@c.us`;
-  }
-
   async sendMessage(
     sessionId: string,
     number: string,
@@ -188,21 +206,18 @@ export class WhatsAppService {
     const client = this.sessions.get(sessionId);
 
     if (!client) {
-      this.logger.error(`Sessão ${sessionId} não está ativa.`);
-      return {
-        status: 'error',
-        error: `Sessão ${sessionId} não está ativa.`,
-      };
+      const errMsg = `Sessão ${sessionId} não está ativa.`;
+      this.logger.error(errMsg);
+      return { status: 'error', error: errMsg };
     }
 
-    const formattedNumber = this.formatPhoneNumber(number);
+    const formattedNumber = formatPhoneNumber(number);
 
     try {
       const messageResponse = await client.sendMessage(
         formattedNumber,
         message,
       );
-
       return {
         status: 'success',
         messageId: messageResponse.id.id,
@@ -212,15 +227,10 @@ export class WhatsAppService {
         error instanceof Error
           ? error.message
           : JSON.stringify(error, Object.getOwnPropertyNames(error));
-
       this.logger.error(
         `Erro ao enviar mensagem para ${formattedNumber} na sessão ${sessionId}: ${errorMessage}`,
       );
-
-      return {
-        status: 'error',
-        error: errorMessage,
-      };
+      return { status: 'error', error: errorMessage };
     }
   }
 }

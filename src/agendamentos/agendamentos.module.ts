@@ -13,11 +13,14 @@ import { WhatsAppModule } from 'src/whatsapp/modules/whatsapp.module';
 
 @Module({
   imports: [
-    BullModule.registerQueue({ name: 'agendamentos' }),
+    BullModule.registerQueue({
+      name: 'agendamentos',
+    }),
 
     MongooseModule.forFeature([
       { name: Agendamento.name, schema: AgendamentoSchema },
     ]),
+
     WhatsAppModule,
   ],
   controllers: [AgendamentosController],

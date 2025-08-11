@@ -1,20 +1,18 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import {
-  Agendamento,
-  AgendamentoDocument,
-} from 'src/models/schemas/AgendamentosSchema/agendamentos.schema';
 import { CreateAgendamentoDto } from './dto/create-agendamento.dto';
+import { Agendamento } from '../models/schemas/AgendamentosSchema/agendamentos.schema';
+import { InjectQueue } from '@nestjs/bull';
 
 @Injectable()
 export class AgendamentosService {
   constructor(
-    @InjectQueue('agendamentos') private readonly agendamentosQueue: Queue,
+    @InjectQueue('agendamentos')
+    private readonly agendamentosQueue: Queue,
     @InjectModel(Agendamento.name)
-    private readonly agendamentosModel: Model<AgendamentoDocument>,
+    private readonly agendamentosModel: Model<Agendamento>,
   ) {}
 
   async criarAgendamento(

@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
-import { ScheduleModule } from '@nestjs/schedule';
 import { WhatsAppModule } from './whatsapp/modules/whatsapp.module';
 import { AgendamentosModule } from './agendamentos/agendamentos.module';
 
@@ -20,7 +19,6 @@ import { AgendamentosModule } from './agendamentos/agendamentos.module';
         };
       },
     }),
-    ScheduleModule.forRoot(),
     WhatsAppModule,
     AgendamentosModule,
   ],

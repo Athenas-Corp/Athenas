@@ -2,12 +2,9 @@ import { Process, Processor } from '@nestjs/bull';
 import { Job } from 'bull';
 import { Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { WhatsAppService } from 'src/whatsapp/services/whatsapp.service';
-import {
-  Agendamento,
-  AgendamentoDocument,
-} from 'src/models/schemas/AgendamentosSchema/agendamentos.schema';
+import { Model, Types } from 'mongoose';
+import { WhatsAppService } from '../whatsapp/services/whatsapp.service';
+import { Agendamento } from '../models/schemas/AgendamentosSchema/agendamentos.schema';
 
 @Processor('agendamentos')
 export class AgendamentosProcessor {
@@ -16,19 +13,31 @@ export class AgendamentosProcessor {
   constructor(
     private readonly whatsAppService: WhatsAppService,
     @InjectModel(Agendamento.name)
-    private readonly agendamentosModel: Model<AgendamentoDocument>,
+    private readonly agendamentosModel: Model<Agendamento>,
   ) {}
 
   @Process('enviar-mensagem')
-  async handleEnviarMensagem(job: Job<AgendamentoDocument>): Promise<void> {
-    const ag = job.data;
-    const id = ag._id ? ag._id.toString() : 'id-indefinido';
+  async handleEnviarMensagem(job: Job<Agendamento>): Promise<void> {
+    const ag = job.data as Agendamento & { _id?: Types.ObjectId | string };
+
+    const id =
+      ag && ag._id
+        ? typeof ag._id === 'string'
+          ? ag._id
+          : ag._id.toString()
+        : 'id-indefinido';
 
     this.logger.log(`Processando job id ${job.id} para agendamento ${id}`);
 
     try {
+      if (!Array.isArray(ag.destinatarios) || ag.destinatarios.length === 0) {
+        this.logger.warn(`Agendamento ${id} não possui destinatários.`);
+        return;
+      }
+
       for (const numero of ag.destinatarios) {
         this.logger.log(`Enviando mensagem para ${numero}`);
+
         const resultado = await this.whatsAppService.sendMessage(
           ag.remetente,
           numero,
@@ -37,7 +46,9 @@ export class AgendamentosProcessor {
 
         if (resultado.status !== 'success') {
           this.logger.error(
-            `Erro ao enviar para ${numero} no agendamento ${id}: ${resultado.error}`,
+            `Erro ao enviar para ${numero} no agendamento ${id}: ${
+              resultado.error ?? 'Erro desconhecido'
+            }`,
           );
         } else {
           this.logger.log(
@@ -52,10 +63,13 @@ export class AgendamentosProcessor {
       );
 
       this.logger.log(`Agendamento ${id} marcado como enviado.`);
-    } catch (error) {
+    } catch (error: unknown) {
       this.logger.error(
-        `Erro ao processar agendamento ${id}: ${error instanceof Error ? error.message : error}`,
+        `Erro ao processar agendamento ${id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
+
       await this.agendamentosModel.updateOne(
         { _id: ag._id },
         { status: 'erro' },
