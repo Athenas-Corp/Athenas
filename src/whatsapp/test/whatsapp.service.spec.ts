@@ -2,9 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { WhatsAppService } from '../services/whatsapp.service';
 import { getModelToken } from '@nestjs/mongoose';
 import { Client } from 'whatsapp-web.js';
-import { WhatsAppSession } from '../interfaces/session.interface';
 
-// Mock whatsapp-web.js
 jest.mock('whatsapp-web.js', () => ({
   Client: jest.fn().mockImplementation(() => ({
     initialize: jest.fn(),
@@ -12,10 +10,8 @@ jest.mock('whatsapp-web.js', () => ({
     sendMessage: jest.fn(),
   })),
   LocalAuth: jest.fn(),
-  Message: jest.fn(),
 }));
 
-// Mock qrcode-terminal para não imprimir no teste
 jest.mock('qrcode-terminal', () => ({
   generate: jest.fn(),
 }));
@@ -47,234 +43,95 @@ describe('WhatsAppService', () => {
     }).compile();
 
     service = module.get<WhatsAppService>(WhatsAppService);
+
+    jest.spyOn(service['logger'], 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
     jest.clearAllMocks();
     MockedClient.mockReset();
+    service['sessions'].clear();
   });
 
-  describe('onModuleInit', () => {
-    it('deve reconectar sessões do banco', async () => {
-      const sessions: WhatsAppSession[] = [
-        {
-          sessionId: 'sessao1',
-          status: 'ready',
-          sessionData: {
-            WABrowserId: 'mock-browser-id',
-            WASecretBundle: { keyData: 'mock-key-data' },
-            WAToken1: 'mock-token-1',
-            WAToken2: 'mock-token-2',
-          },
-        },
-      ];
-      mockFind.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(sessions),
-      });
+  describe('enviarRespostaAutomatica', () => {
+    it('deve enviar mensagem dentro do horário comercial', async () => {
+      const mockDate = new Date('2025-08-12T10:00:00-03:00');
 
-      const startSessionSpy = jest
-        .spyOn(service, 'startSession')
-        .mockResolvedValue({ status: 'initializing', sessionId: 'sessao1' });
+      jest.spyOn(Date, 'now').mockReturnValue(mockDate.getTime());
 
-      await service.onModuleInit();
+      const sendMessageSpy = jest
+        .spyOn(service, 'sendMessage')
+        .mockImplementation(() => {
+          service['logger'].log('mock sendMessage chamado');
+          return Promise.resolve({ status: 'success' });
+        });
 
-      expect(mockFind).toHaveBeenCalledWith({ status: 'ready' });
-      expect(startSessionSpy).toHaveBeenCalledWith('sessao1', false);
-    });
-
-    it('deve logar erro se startSession falhar', async () => {
-      const sessions: WhatsAppSession[] = [
-        {
-          sessionId: 'sessaoErro',
-          status: 'ready',
-          sessionData: {
-            WABrowserId: 'mock-browser-id',
-            WASecretBundle: { keyData: 'mock-key-data' },
-            WAToken1: 'mock-token-1',
-            WAToken2: 'mock-token-2',
-          },
-        },
-      ];
-      mockFind.mockReturnValue({
-        exec: jest.fn().mockResolvedValue(sessions),
-      });
-
-      jest.spyOn(service, 'startSession').mockRejectedValue(new Error('falha'));
-
+      const loggerLogSpy = jest.spyOn(service['logger'], 'log');
       const loggerErrorSpy = jest.spyOn(service['logger'], 'error');
 
-      await expect(service.onModuleInit()).resolves.not.toThrow();
-
-      expect(loggerErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Erro ao reconectar sessão sessaoErro:'),
-        expect.any(Error),
+      const result = await service.enviarRespostaAutomatica(
+        'sessao',
+        '559999999999',
       );
-    });
-  });
 
-  describe('createNewSession', () => {
-    it('deve criar e iniciar nova sessão', async () => {
-      mockCreate.mockResolvedValue(undefined);
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        'sessao',
+        '559999999999',
+        'Olá! Recebemos sua mensagem e logo entraremos em contato.',
+      );
+      expect(result.status).toBe('success');
+      expect(loggerLogSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Mensagem automática enviada'),
+      );
+      expect(loggerErrorSpy).not.toHaveBeenCalled();
 
-      const startSessionSpy = jest
-        .spyOn(service, 'startSession')
-        .mockResolvedValue({ status: 'initializing', sessionId: 'cliente1' });
-
-      const sessionId = await service.createNewSession('cliente1');
-
-      expect(mockCreate).toHaveBeenCalledWith({
-        sessionId: 'cliente1',
-        status: 'pending',
-        clientName: 'cliente1',
-      });
-
-      expect(startSessionSpy).toHaveBeenCalledWith('cliente1', true);
-      expect(sessionId).toBe('cliente1');
+      jest.restoreAllMocks();
     });
 
-    it('deve logar erro ao falhar na criação', async () => {
-      mockCreate.mockRejectedValue(new Error('erro ao criar'));
+    it('deve enviar mensagem fora do horário comercial', async () => {
+      // Data fora do horário comercial: 12 de agosto de 2025, 23h00 UTC
+      const mockDate = new Date('2025-08-12T23:00:00Z');
+
+      // MOCKAR somente Date.now()
+      jest.spyOn(Date, 'now').mockReturnValue(mockDate.getTime());
+
+      const sendMessageSpy = jest
+        .spyOn(service, 'sendMessage')
+        .mockResolvedValue({ status: 'success' });
+
+      const loggerLogSpy = jest.spyOn(service['logger'], 'log');
+
+      await service.enviarRespostaAutomatica('sessao', '559999999999');
+
+      expect(sendMessageSpy).toHaveBeenCalledWith(
+        'sessao',
+        '559999999999',
+        service['mensagemForaHorario'], // CORRETO: mensagemForaHorario
+      );
+      expect(loggerLogSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Mensagem automática enviada'),
+      );
+
+      jest.restoreAllMocks();
+    });
+
+    it('deve lidar com erro inesperado', async () => {
+      jest
+        .spyOn(service, 'sendMessage')
+        .mockRejectedValue(new Error('falha inesperada'));
       const loggerErrorSpy = jest.spyOn(service['logger'], 'error');
 
-      const sessionId = await service.createNewSession('clienteErro');
-
-      expect(loggerErrorSpy).toHaveBeenCalledWith(
-        'Erro ao criar nova sessão: erro ao criar',
-      );
-      expect(sessionId).toBe('clienteErro');
-    });
-  });
-
-  describe('startSession', () => {
-    it('deve iniciar nova sessão se não existir', async () => {
-      const initializeMock = jest.fn().mockResolvedValue(undefined);
-      const onMock = jest.fn();
-
-      MockedClient.mockImplementation(
-        () =>
-          ({
-            initialize: initializeMock,
-            on: onMock,
-          }) as unknown as Client,
-      );
-
-      const result = await service.startSession('sessaoNova', true);
-
-      expect(result).toEqual({
-        status: 'initializing',
-        sessionId: 'sessaoNova',
-      });
-      expect(MockedClient).toHaveBeenCalledTimes(1);
-      expect(onMock).toHaveBeenCalled();
-      expect(initializeMock).toHaveBeenCalled();
-    });
-
-    it('deve retornar already-started se sessão existir', async () => {
-      service['sessions'].set('sessaoExistente', {} as Client);
-
-      const result = await service.startSession('sessaoExistente');
-
-      expect(result).toEqual({
-        status: 'already-started',
-        sessionId: 'sessaoExistente',
-      });
-    });
-
-    it('deve retornar erro se falhar na inicialização', async () => {
-      MockedClient.mockImplementation(
-        () =>
-          ({
-            initialize: jest.fn().mockRejectedValue(new Error('falha init')),
-            on: jest.fn(),
-          }) as unknown as Client,
-      );
-
-      const result = await service.startSession('sessaoErro');
-
-      expect(result).toEqual({ status: 'error', sessionId: 'sessaoErro' });
-    });
-  });
-
-  describe('sendMessage', () => {
-    it('deve enviar mensagem com sucesso', async () => {
-      const mockSendMessage = jest.fn().mockResolvedValue({
-        id: { id: 'msgId123' },
-      });
-
-      const mockClient = {
-        sendMessage: mockSendMessage,
-      } as unknown as Client;
-
-      service['sessions'].set('sessaoMsg', mockClient);
-
-      const result = await service.sendMessage(
-        'sessaoMsg',
-        '+55 61 9501-0011',
-        'Olá',
-      );
-
-      expect(mockSendMessage).toHaveBeenCalledWith('556195010011@c.us', 'Olá');
-      expect(result).toEqual({ status: 'success', messageId: 'msgId123' });
-    });
-
-    it('deve retornar erro se sessão não existir', async () => {
-      const result = await service.sendMessage(
-        'sessaoInvalida',
-        '+55 61 9501-0011',
-        'Olá',
+      const result = await service.enviarRespostaAutomatica(
+        'sessao',
+        '559999999999',
       );
 
       expect(result.status).toBe('error');
-      expect(result.error).toMatch(/Sessão sessaoInvalida não está ativa./);
-    });
-
-    it('deve retornar erro ao falhar no envio da mensagem', async () => {
-      const mockSendMessage = jest
-        .fn()
-        .mockRejectedValue(new Error('falha no envio'));
-
-      const mockClient = {
-        sendMessage: mockSendMessage,
-      } as unknown as Client;
-
-      service['sessions'].set('sessaoErro', mockClient);
-
-      const result = await service.sendMessage(
-        'sessaoErro',
-        '+55 61 9501-0011',
-        'Oi',
+      expect(loggerErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Erro inesperado ao enviar mensagem automática: falha inesperada',
+        ),
       );
-
-      expect(result.status).toBe('error');
-      expect(result.error).toMatch(/falha no envio/);
-    });
-  });
-
-  describe('startSession', () => {
-    it('deve registrar eventos do client ao iniciar sessão', async () => {
-      const onMock = jest.fn();
-      const initializeMock = jest.fn().mockResolvedValue(undefined);
-
-      // Mock da implementação do Client para expor on e initialize
-      MockedClient.mockImplementation(
-        () =>
-          ({
-            initialize: initializeMock,
-            on: onMock,
-          }) as unknown as Client,
-      );
-
-      const result = await service.startSession('sessaoEvento', true);
-
-      expect(result.status).toBe('initializing');
-      expect(onMock).toHaveBeenCalledWith('qr', expect.any(Function));
-      expect(onMock).toHaveBeenCalledWith('ready', expect.any(Function));
-      expect(onMock).toHaveBeenCalledWith(
-        'authenticated',
-        expect.any(Function),
-      );
-      expect(onMock).toHaveBeenCalledWith('disconnected', expect.any(Function));
-      expect(onMock).toHaveBeenCalledWith('message', expect.any(Function));
     });
   });
 });

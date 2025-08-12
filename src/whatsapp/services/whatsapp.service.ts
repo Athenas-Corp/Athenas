@@ -4,6 +4,10 @@ import * as qrcode from 'qrcode-terminal';
 import { Model, UpdateResult } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { formatPhoneNumber } from '../../../utils/helper/phone.helper';
+import {
+  defaultHorariosConfig,
+  isHorarioComercial,
+} from '../../../utils/helper/horario-comercial';
 
 interface WhatsAppSession {
   sessionId: string;
@@ -15,10 +19,19 @@ export class WhatsAppService {
   private readonly logger = new Logger(WhatsAppService.name);
   private readonly sessions = new Map<string, Client>();
 
+  private readonly mensagemDentroHorario: string;
+
+  private readonly mensagemForaHorario: string;
+
   constructor(
     @InjectModel('WhatsAppSession')
     private readonly sessionModel: Model<WhatsAppSession>,
-  ) {}
+  ) {
+    this.mensagemForaHorario =
+      'Olá! Estamos fora do nosso horário de atendimento. Retornaremos no próximo dia útil.';
+    this.mensagemDentroHorario =
+      'Olá! Recebemos sua mensagem e logo entraremos em contato.';
+  }
 
   async onModuleInit(): Promise<void> {
     this.logger.log('Iniciando sessões salvas no banco...');
@@ -123,10 +136,23 @@ export class WhatsAppService {
       });
     });
 
-    client.on('message', (message: Message) => {
-      this.handleMessage(message, sessionId).catch((err) => {
-        this.logger.error(`Erro no handleMessage: ${err}`);
-      });
+    client.on('message', (message) => {
+      void (async (): Promise<void> => {
+        try {
+          if (message.fromMe) return;
+
+          const from = message.from;
+          const number = from.split('@')[0];
+
+          this.logger.log(
+            `Mensagem recebida de ${number} na sessão ${sessionId}, enviando resposta automática...`,
+          );
+
+          await this.enviarRespostaAutomatica(sessionId, number);
+        } catch (err) {
+          this.logger.error(`Erro ao processar mensagem: ${err}`);
+        }
+      })();
     });
   }
 
@@ -159,27 +185,6 @@ export class WhatsAppService {
       return contact.pushname || contact.name || 'meu consagrado';
     } catch {
       return 'meu consagrado';
-    }
-  }
-
-  private async handleMessage(
-    message: Message,
-    sessionId: string,
-  ): Promise<void> {
-    try {
-      if (message.body === '!ping') {
-        await message.reply('Pong! 🏓');
-        this.logger.log(`[${sessionId}] Respondeu ping para ${message.from}`);
-        return;
-      }
-
-      const notifyName = await this.getNotifyName(message);
-      this.logger.log(
-        `[${sessionId}] Mensagem recebida de ${notifyName}: ${message.body}`,
-      );
-      await message.reply(`Estou falando com ${notifyName}?`);
-    } catch (error) {
-      this.logUnknownError(error, sessionId, 'Erro no listener de mensagem');
     }
   }
 
@@ -231,6 +236,39 @@ export class WhatsAppService {
         `Erro ao enviar mensagem para ${formattedNumber} na sessão ${sessionId}: ${errorMessage}`,
       );
       return { status: 'error', error: errorMessage };
+    }
+  }
+
+  async enviarRespostaAutomatica(
+    sessionId: string,
+    number: string,
+  ): Promise<{ status: string; error?: string }> {
+    const agora = new Date(Date.now());
+
+    const mensagem = isHorarioComercial(agora, defaultHorariosConfig)
+      ? this.mensagemDentroHorario
+      : this.mensagemForaHorario;
+
+    try {
+      const resultado = await this.sendMessage(sessionId, number, mensagem);
+
+      if (resultado.status !== 'success') {
+        this.logger.error(`Erro ao enviar mensagem automática para ${number}`);
+      }
+      this.logger.log(`Mensagem automática enviada para ${number}`);
+
+      return resultado;
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        this.logger.error(
+          `Erro inesperado ao enviar mensagem automática: ${error.message}`,
+        );
+      } else {
+        this.logger.error(
+          'Erro inesperado ao enviar mensagem automática: erro desconhecido',
+        );
+      }
+      return { status: 'error', error: 'Erro inesperado' };
     }
   }
 }
