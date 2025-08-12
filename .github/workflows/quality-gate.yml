@@ -22,7 +22,7 @@ jobs:
       - name: Block direct push to protected branches
         if: github.event_name == 'push' && contains(fromJson('["main", "dev", "hml"]'), github.ref_name)
         run: |
-          echo "❌ Push direto para a branch ${{ github.ref_name }} não é permitido!"
+          echo "Push direto para a branch ${{ github.ref_name }} não é permitido!"
           echo "Use Pull Requests para fazer alterações nessas branches."
           exit 1
 
@@ -68,8 +68,8 @@ jobs:
         run: |
           npm install -g sonar-scanner
           sonar-scanner \
-            -Dsonar.projectKey=Athenas \
-            -Dsonar.organization=hagave \
+            -Dsonar.projectKey=Athenas-Corp_Athenas \
+            -Dsonar.organization=athenas-corp \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.login=${SONAR_TOKEN} \
             -Dsonar.sources=src \
