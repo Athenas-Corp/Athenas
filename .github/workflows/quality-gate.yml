@@ -68,7 +68,7 @@ jobs:
         run: |
           npm install -g sonar-scanner
           sonar-scanner \
-            -Dsonar.projectKey=Athenas \
+            -Dsonar.projectKey=Athenas-Corp_Athenas \
             -Dsonar.organization=athenas-corp \
             -Dsonar.host.url=https://sonarcloud.io \
             -Dsonar.login=${SONAR_TOKEN} \
