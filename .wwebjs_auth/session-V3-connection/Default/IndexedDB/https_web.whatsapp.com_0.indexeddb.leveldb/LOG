@@ -1,0 +1,11 @@
+2025/08/11-15:13:13.887 14702 Reusing MANIFEST /home/arthur/Documents/Projects/Athenas 5.0/Athenas/.wwebjs_auth/session-V3-connection/Default/IndexedDB/https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2025/08/11-15:13:13.887 14702 Recovering log #61
+2025/08/11-15:13:13.889 14702 Reusing old log /home/arthur/Documents/Projects/Athenas 5.0/Athenas/.wwebjs_auth/session-V3-connection/Default/IndexedDB/https_web.whatsapp.com_0.indexeddb.leveldb/000061.log 
+2025/08/11-15:13:15.602 1470a Level-0 table #66: started
+2025/08/11-15:13:15.606 1470a Level-0 table #66: 36598 bytes OK
+2025/08/11-15:13:15.609 1470a Delete type=0 #61
+2025/08/11-15:13:15.609 1470a Manual compaction at level-0 from '\x00\x1c\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00\x1d\x00\x00\x00' @ 0 : 0; will stop at (end)
+2025/08/11-15:13:17.732 14702 Compacting 1@1 + 1@2 files
+2025/08/11-15:13:17.787 14702 Generated table #67@1: 46982 keys, 2189949 bytes
+2025/08/11-15:13:17.787 14702 Compacted 1@1 + 1@2 files => 2189949 bytes
+2025/08/11-15:13:17.789 14702 compacted to: files[ 0 0 1 0 0 0 0 ]
