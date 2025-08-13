@@ -1,0 +1,43 @@
+name: Bump version
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Bump version
+        run: |
+          npm version patch --no-git-tag-version
+          git add package*.json
+          git commit -m "chore: bump version to $(node -p "require('./package.json').version")" || echo "No changes to commit"
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: chore/bump-version
+          title: "chore: bump version to $(node -p "require('./package.json').version")"
+          body: "Bump version automatically via GitHub Actions"
+          commit-message: "chore: bump version to $(node -p "require('./package.json').version")"
+          base: main
