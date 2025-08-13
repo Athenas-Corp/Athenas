@@ -4,9 +4,7 @@ on:
   push:
     branches:
       - main
-      - dev
-      - hml
-
+      
     paths-ignore:
       - 'package.json'
       - 'package-lock.json'
