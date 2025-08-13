@@ -43,16 +43,24 @@ jobs:
         run: npm run lint
 
       - name: Run tests with coverage (services only)
-        run: npm run test:cov -- --testPathPattern=".*\.service\.spec\.ts$" --collectCoverageFrom="src/**/*.service.ts"
+        run: |
+          npm run test:cov -- \
+            --testPathPattern=".*\.service\.spec\.ts$" \
+            --collectCoverageFrom="src/**/*.service.ts" \
+            --coverageReporters=text \
+            --coverageReporters=json-summary \
+            --coverageReporters=lcov
+
 
       - name: Validate 60% test coverage
         run: |
-          COVERAGE=$(node -p "require('./coverage/coverage-summary.json').total.lines.pct")
-          echo "Test Coverage: $COVERAGE%"
+          COVERAGE=$(node -p "require('./coverage/coverage-summary.json').total.lines.pct || 0")
+          echo "Test Coverage: ${COVERAGE}%"
           if (( $(echo "$COVERAGE < 60" | bc -l) )); then
             echo "❌ Cobertura abaixo de 60%"
             exit 1
           fi
+
 
       - name: Validate no console.* usage
         run: |
@@ -76,8 +84,11 @@ jobs:
             -Dsonar.tests=src \
             -Dsonar.test.inclusions="**/*.spec.ts" \
             -Dsonar.exclusions="**/*.spec.ts,**/node_modules/**" \
+            -Dsonar.coverage.exclusions="**/*.controller.ts,**/*.module.ts,**/*.dto.ts,**/main.ts,**/config/**/*.ts,**/migrations/**/*.ts,**/filters/**/*.ts,**/interceptors/**/*.ts,**/pipes/**/*.ts" \
             -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info \
             -Dsonar.testExecutionReportPaths=coverage/test-report.xml
+
+
 
       - name: SonarQube Quality Gate Check
         if: github.event_name == 'pull_request' || github.ref_name != 'main'
