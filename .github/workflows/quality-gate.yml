@@ -4,15 +4,12 @@ on:
   pull_request:
     branches:
       - main
-      - dev
-      - hml
+     
   push:
     branches:
       - '**'
       - '!main'
-      - '!dev'
-      - '!hml'
-
+      
 jobs:
   quality-check:
     runs-on: ubuntu-latest
