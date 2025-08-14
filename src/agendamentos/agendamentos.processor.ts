@@ -20,21 +20,22 @@ export class AgendamentosProcessor {
   async handleEnviarMensagem(job: Job<Agendamento>): Promise<void> {
     const ag = job.data as Agendamento & { _id?: Types.ObjectId | string };
 
-    const id =
-      ag && ag._id
-        ? typeof ag._id === 'string'
-          ? ag._id
-          : ag._id.toString()
-        : 'id-indefinido';
+    if (!ag._id) return;
+
+    if (typeof ag._id !== 'string' && !(ag._id instanceof Types.ObjectId)) {
+      throw new Error('ID inválido. Deve ser string ou ObjectId.');
+    }
+
+    const id = typeof ag._id === 'string' ? ag._id : ag._id.toString();
 
     this.logger.log(`Processando job id ${job.id} para agendamento ${id}`);
 
-    try {
-      if (!Array.isArray(ag.destinatarios) || ag.destinatarios.length === 0) {
-        this.logger.warn(`Agendamento ${id} não possui destinatários.`);
-        return;
-      }
+    if (!Array.isArray(ag.destinatarios) || ag.destinatarios.length === 0) {
+      this.logger.warn(`Agendamento ${id} não possui destinatários.`);
+      return;
+    }
 
+    try {
       for (const numero of ag.destinatarios) {
         this.logger.log(`Enviando mensagem para ${numero}`);
 
@@ -50,11 +51,10 @@ export class AgendamentosProcessor {
               resultado.error ?? 'Erro desconhecido'
             }`,
           );
-        } else {
-          this.logger.log(
-            `Mensagem enviada para ${numero} no agendamento ${id}`,
-          );
+          continue;
         }
+
+        this.logger.log(`Mensagem enviada para ${numero} no agendamento ${id}`);
       }
 
       await this.agendamentosModel.updateOne(
