@@ -28,23 +28,40 @@ export class WhatsAppService {
     private readonly sessionModel: Model<WhatsAppSession>,
   ) {
     this.mensagemForaHorario =
-      'Estamos fora do nosso horário de atendimento. Retornaremos no próximo dia útil.';
+      'Olá! Estamos fora do nosso horário de atendimento. Retornaremos no próximo dia útil.';
     this.mensagemDentroHorario =
-      'Recebemos sua mensagem e logo entraremos em contato.';
+      'Olá! Recebemos sua mensagem e logo entraremos em contato.';
+  }
+
+  async onModuleInit(): Promise<void> {
+    this.logger.log('Iniciando sessões salvas no banco...');
+    const sessions = await this.sessionModel.find({ status: 'ready' }).exec();
+
+    for (const session of sessions) {
+      try {
+        await this.startSession(session.sessionId, false);
+        this.logger.log(`Sessão reconectada: ${session.sessionId}`);
+      } catch (error) {
+        this.logger.error(
+          `Erro ao reconectar sessão ${session.sessionId}:`,
+          error,
+        );
+      }
+    }
   }
 
   async createNewSession(clientName: string): Promise<string> {
-    const sessionId = clientName.trim();
+    const sessionId = clientName;
 
     try {
       await this.sessionModel.create({
-        sessionId,
+        sessionId: sessionId,
         status: 'pending',
-        clientName: clientName.trim(),
+        clientName,
       });
 
-      this.logger.log(`Sessão criada no banco: ${sessionId}`);
-    } catch (error) {
+      await this.startSession(sessionId, true);
+    } catch (error: unknown) {
       if (error instanceof Error) {
         this.logger.error(`Erro ao criar nova sessão: ${error.message}`);
       } else {
@@ -59,48 +76,25 @@ export class WhatsAppService {
     sessionId: string,
     showQrCode = true,
   ): Promise<{ status: string; sessionId: string }> {
-    const cleanSessionId = sessionId.trim();
-
-    const sessionExists = await this.sessionModel
-      .findOne({ sessionId: cleanSessionId })
-      .lean()
-      .exec();
-
-    if (!sessionExists) {
-      this.logger.warn(`Sessão ${cleanSessionId} não encontrada no banco`);
-      const allSessions = await this.sessionModel.find().lean();
-      this.logger.debug(
-        `Sessões atuais no banco: ${JSON.stringify(allSessions)}`,
-      );
-      return { status: 'not-found', sessionId: cleanSessionId };
-    }
-
-    if (this.sessions.has(cleanSessionId)) {
-      this.logger.log(`Sessão já em execução: ${cleanSessionId}`);
-      return { status: 'already-started', sessionId: cleanSessionId };
+    if (this.sessions.has(sessionId)) {
+      this.logger.log(`Sessão já existe: ${sessionId}`);
+      return { status: 'already-started', sessionId };
     }
 
     const client = new Client({
-      authStrategy: new LocalAuth({ clientId: cleanSessionId }),
+      authStrategy: new LocalAuth({ clientId: sessionId }),
     });
 
-    this.sessions.set(cleanSessionId, client);
-    this.registerClientEvents(client, cleanSessionId, showQrCode);
+    this.sessions.set(sessionId, client);
+
+    this.registerClientEvents(client, sessionId, showQrCode);
 
     try {
       await client.initialize();
-      await this.sessionModel.updateOne(
-        { sessionId: cleanSessionId },
-        { $set: { status: 'initializing' } },
-      );
-      return { status: 'initializing', sessionId: cleanSessionId };
+      return { status: 'initializing', sessionId };
     } catch (error) {
-      this.logUnknownError(error, cleanSessionId, 'Erro ao iniciar sessão');
-      await this.sessionModel.updateOne(
-        { sessionId: cleanSessionId },
-        { $set: { status: 'error' } },
-      );
-      return { status: 'error', sessionId: cleanSessionId };
+      this.logUnknownError(error, sessionId, 'Erro geral em startSession');
+      return { status: 'error', sessionId };
     }
   }
 
@@ -154,7 +148,7 @@ export class WhatsAppService {
             `Mensagem recebida de ${number} na sessão ${sessionId}, enviando resposta automática...`,
           );
 
-          await this.enviarRespostaAutomatica(sessionId, number, message);
+          await this.enviarRespostaAutomatica(sessionId, number);
         } catch (err) {
           this.logger.error(`Erro ao processar mensagem: ${err}`);
         }
@@ -188,9 +182,9 @@ export class WhatsAppService {
   private async getNotifyName(message: Message): Promise<string> {
     try {
       const contact = await message.getContact();
-      return contact.pushname || contact.name || 'cliente';
+      return contact.pushname || contact.name || 'meu consagrado';
     } catch {
-      return 'cliente';
+      return 'meu consagrado';
     }
   }
 
@@ -245,47 +239,23 @@ export class WhatsAppService {
     }
   }
 
-  private respondedNumbers: Map<string, Set<string>> = new Map();
-
   async enviarRespostaAutomatica(
     sessionId: string,
     number: string,
-    message: Message,
   ): Promise<{ status: string; error?: string }> {
-    if (!this.respondedNumbers.has(sessionId)) {
-      this.respondedNumbers.set(sessionId, new Set());
-    }
-    const numbersForSession = this.respondedNumbers.get(sessionId)!;
+    const agora = new Date(Date.now());
 
-    if (numbersForSession.has(number)) {
-      this.logger.log(
-        `Resposta automática já enviada para ${number}, ignorando...`,
-      );
-      return { status: 'already-sent' };
-    }
-
-    const nomeContato = await this.getNotifyName(message);
-
-    const agora = new Date();
-    const mensagemBase = isHorarioComercial(agora, defaultHorariosConfig)
+    const mensagem = isHorarioComercial(agora, defaultHorariosConfig)
       ? this.mensagemDentroHorario
       : this.mensagemForaHorario;
 
-    const mensagemPersonalizada = `Olá, ${nomeContato}! ${mensagemBase}`;
-
     try {
-      const resultado = await this.sendMessage(
-        sessionId,
-        number,
-        mensagemPersonalizada,
-      );
+      const resultado = await this.sendMessage(sessionId, number, mensagem);
 
-      if (resultado.status === 'success') {
-        numbersForSession.add(number);
-        this.logger.log(`Mensagem automática enviada para ${number}`);
-      } else {
+      if (resultado.status !== 'success') {
         this.logger.error(`Erro ao enviar mensagem automática para ${number}`);
       }
+      this.logger.log(`Mensagem automática enviada para ${number}`);
 
       return resultado;
     } catch (error: unknown) {
