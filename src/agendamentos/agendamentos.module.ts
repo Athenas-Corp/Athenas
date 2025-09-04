@@ -8,8 +8,7 @@ import {
   Agendamento,
   AgendamentoSchema,
 } from 'src/models/schemas/AgendamentosSchema/agendamentos.schema';
-import { AgendamentosProcessor } from './agendamentos.processor';
-import { WhatsAppModule } from 'src/whatsapp/modules/whatsapp.module';
+import { WhatsAppModule } from 'src/whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -24,7 +23,7 @@ import { WhatsAppModule } from 'src/whatsapp/modules/whatsapp.module';
     WhatsAppModule,
   ],
   controllers: [AgendamentosController],
-  providers: [AgendamentosService, AgendamentosProcessor],
+  providers: [AgendamentosService],
   exports: [AgendamentosService],
 })
 export class AgendamentosModule {}
