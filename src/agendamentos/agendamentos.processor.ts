@@ -28,6 +28,7 @@
 
 //   //   const id = typeof ag._id === 'string' ? ag._id : ag._id.toString();
 
+
 //   //   this.logger.log(`Processando job id ${job.id} para agendamento ${id}`);
 
 //   //   if (!Array.isArray(ag.destinatarios) || ag.destinatarios.length === 0) {
@@ -38,6 +39,7 @@
 //   //   try {
 //   //     for (const numero of ag.destinatarios) {
 //   //       this.logger.log(`Enviando mensagem para ${numero}`);
+
 
 //   //       const resultado = await this.whatsAppService.sendMessage(
 //   //         ag.remetente,
@@ -56,6 +58,7 @@
 
 //   //       this.logger.log(`Mensagem enviada para ${numero} no agendamento ${id}`);
 //   //     }
+
 
 //   //     await this.agendamentosModel.updateOne(
 //   //       { _id: ag._id },
