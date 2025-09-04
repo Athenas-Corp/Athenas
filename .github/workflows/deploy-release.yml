@@ -133,25 +133,45 @@ jobs:
           name: coverage-reports
           path: ./
 
-      # ✅ VERIFICAR SE OS ARQUIVOS FORAM BAIXADOS CORRETAMENTE
-      - name: Verify Coverage Files
+      # ✅ VERIFICAR E ORGANIZAR OS ARQUIVOS BAIXADOS
+      - name: Verify and Organize Coverage Files
         run: |
           echo "📋 Checking downloaded files..."
           ls -la
-          echo "📋 Looking for coverage directory..."
-          find . -name "coverage" -type d
-          echo "📋 Looking for lcov.info files..."
-          find . -name "lcov.info" -type f
-          if [ -f "coverage/lcov.info" ]; then
-            echo "✅ LCOV file found at coverage/lcov.info"
+          echo ""
+
+          # ✅ Verificar se lcov.info existe na raiz (onde foi baixado)
+          if [ -f "lcov.info" ]; then
+            echo "✅ LCOV file found at root - organizing files..."
+            
+            # Criar pasta coverage se não existir
+            mkdir -p coverage
+            
+            # Mover arquivos para a pasta coverage
+            if [ -f "lcov.info" ]; then
+              mv lcov.info coverage/
+              echo "✅ Moved lcov.info to coverage/"
+            fi
+            
+            if [ -f "coverage-summary.json" ]; then
+              mv coverage-summary.json coverage/
+              echo "✅ Moved coverage-summary.json to coverage/"
+            fi
+            
+            if [ -d "lcov-report" ]; then
+              mv lcov-report coverage/
+              echo "✅ Moved lcov-report/ to coverage/"
+            fi
+            
+            echo ""
+            echo "📋 Final coverage directory structure:"
+            ls -la coverage/
+            echo ""
+            echo "📋 First 5 lines of LCOV file:"
             head -5 coverage/lcov.info
-          elif [ -f "./coverage/lcov.info" ]; then
-            echo "✅ LCOV file found at ./coverage/lcov.info"
-            head -5 ./coverage/lcov.info
+            
           else
             echo "❌ LCOV file not found"
-            echo "Contents of current directory:"
-            ls -la
             exit 1
           fi
 
