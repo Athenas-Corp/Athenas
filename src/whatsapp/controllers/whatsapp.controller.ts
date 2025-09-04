@@ -1,53 +1,38 @@
-import {
-  Controller,
-  Post,
-  Body,
-  Get,
-  Delete,
-  Param,
-  Put,
-} from '@nestjs/common';
+import { Controller, Post, Body } from '@nestjs/common';
 import { WhatsAppService } from '../services/whatsapp.service';
+import { StartSessionDto } from '../dto/start-session.dto';
+import { SendMessageDto } from '../dto/send-message.dto';
 import { CreateSessionDto } from '../dto/create-session.dto';
-import { SessionResponseDto } from '../dto/session-response.dto';
 
 @Controller('whatsapp')
 export class WhatsAppController {
   constructor(private readonly whatsappService: WhatsAppService) {}
 
-  @Post('createSession')
+  @Post('start')
+  async startSession(
+    @Body() body: StartSessionDto,
+  ): Promise<{ status: string; sessionId: string }> {
+    return this.whatsappService.startSession(body.sessionId);
+  }
+
+  @Post('send')
+  async sendMessage(
+    @Body() body: SendMessageDto,
+  ): Promise<{ status: string; messageId?: string }> {
+    return this.whatsappService.sendMessage(
+      body.sessionId,
+      body.number,
+      body.message,
+    );
+  }
+
+  @Post('createSesson')
   async createSession(
     @Body() createSessionDto: CreateSessionDto,
-  ): Promise<{ status: string; clientName?: string; error?: string }> {
-    return this.whatsappService.createClient(createSessionDto.clientName);
+  ): Promise<{ sessionId: string }> {
+    const sessionId = await this.whatsappService.createNewSession(
+      createSessionDto.clientName,
+    );
+    return { sessionId };
   }
-  @Get('clients')
-  async getAllSessions(): Promise<SessionResponseDto[]> {
-    return this.whatsappService.findAllSessions();
-  }
-  @Get('clients/:clientName')
-  async startSession(@Param('clientName') clientName: string): Promise<void> {
-    return this.whatsappService.connectClient(clientName);
-  }
-
-  @Delete('client/:clientName')
-  async deleteSession(
-    @Param('clientName') clientName: string,
-  ): Promise<{ status: string }> {
-    await this.whatsappService.deleteSession(clientName);
-    return { status: `Sessão ${clientName} deletada com sucesso` };
-  }
-
-  @Put('update-client/:oldClientName')
-  async updateCleint(
-    @Param('oldClientName') oldClientName: string,
-    @Body('newclientName') newclientName: string,
-  ): Promise<{ status: string; clientName?: string }> {
-    return this.whatsappService.updateClientName(oldClientName, newclientName);
-  }
-
-  // @Get('clients/:clientName')
-  // async startSession(@Param('teste1') clientName: string): Promise<void> {
-  //   return this.whatsappService.ClientReady();
-  // }
 }

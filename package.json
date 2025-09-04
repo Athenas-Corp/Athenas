@@ -32,10 +32,7 @@
     "@nestjs/mongoose": "^11.0.3",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
-    "@nestjs/platform-socket.io": "^11.1.6",
-    "@nestjs/websockets": "^11.1.6",
     "@prisma/client": "^6.12.0",
-    "@types/ioredis": "^4.28.10",
     "@types/qrcode": "^1.5.5",
     "amqplib": "^0.10.8",
     "bull": "^4.16.5",
@@ -49,11 +46,9 @@
     "qrcode-terminal": "^0.12.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "socket.io": "^4.8.1",
-    "socket.io-client": "^4.8.1",
     "terminal-qr": "^1.0.1",
     "uuid": "^11.1.0",
-    "whatsapp-web.js": "^1.33.2"
+    "whatsapp-web.js": "^1.31.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

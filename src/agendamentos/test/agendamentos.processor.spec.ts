@@ -1,117 +1,105 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { WhatsAppService } from '../../whatsapp/services/whatsapp.service';
 import { getModelToken } from '@nestjs/mongoose';
-import { AgendamentosService } from '../agendamentos.service';
-import { BadRequestException } from '@nestjs/common';
+import { Model } from 'mongoose';
 import { Agendamento } from '../../models/schemas/AgendamentosSchema/agendamentos.schema';
-import { CreateAgendamentoDto } from '../dto/create-agendamento.dto';
+import { AgendamentosProcessor } from '../agendamentos.processor';
+import { Job } from 'bull';
 
-// Interface para o mock da fila
-interface MockQueue {
-  add: jest.Mock<
-    Promise<void>,
-    [string, Partial<Agendamento>, { delay: number; attempts: number }]
-  >;
+interface AgendamentoJobData {
+  _id: string;
+  destinatarios: string[];
+  remetente: string;
+  mensagem: string;
+  status: string;
+  dataExecucao: Date;
 }
 
-// Interface para o mock do model
-interface MockAgendamentoModel {
-  new (data: Partial<Agendamento>): Partial<Agendamento> & {
-    save: jest.Mock<Promise<Partial<Agendamento>>, []>;
-  };
-}
-
-describe('AgendamentosService', () => {
-  let service: AgendamentosService;
-  let mockQueue: MockQueue;
-  let mockAgendamentosModel: MockAgendamentoModel;
+describe('AgendamentosProcessor', () => {
+  let processor: AgendamentosProcessor;
+  let whatsAppService: Partial<WhatsAppService>;
+  let agendamentosModel: Partial<Model<Agendamento>>;
 
   beforeEach(async () => {
-    mockQueue = {
-      add: jest.fn<
-        Promise<void>,
-        [string, Partial<Agendamento>, { delay: number; attempts: number }]
-      >(),
+    whatsAppService = {
+      sendMessage: jest.fn(),
     };
 
-    // Depois opcionalmente você pode definir o retorno:
-    mockAgendamentosModel = jest
-      .fn()
-      .mockImplementation((data: Partial<Agendamento>) => ({
-        ...data,
-        save: jest.fn().mockResolvedValue({
-          ...data,
-          _id: 'mock-id',
-        }),
-      }));
+    agendamentosModel = {
+      updateOne: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        AgendamentosService,
-        {
-          provide: 'BullQueue_agendamentos', // token gerado pelo @InjectQueue('agendamentos')
-          useValue: mockQueue,
-        },
+        AgendamentosProcessor,
+        { provide: WhatsAppService, useValue: whatsAppService },
         {
           provide: getModelToken(Agendamento.name),
-          useValue: mockAgendamentosModel,
+          useValue: agendamentosModel,
         },
       ],
     }).compile();
 
-    service = module.get<AgendamentosService>(AgendamentosService);
+    processor = module.get<AgendamentosProcessor>(AgendamentosProcessor);
   });
 
-  afterEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it('deve criar agendamento com sucesso', async () => {
-    const dto: CreateAgendamentoDto = {
-      remetente: '123',
-      destinatarios: ['456'],
-      mensagem: 'Olá',
-      dataExecucao: new Date(Date.now() + 1000).toISOString(),
-    };
-
-    const result = await service.criarAgendamento(dto);
-
-    expect(result).toEqual({ message: 'Agendamento criado com sucesso' });
-
-    // Verifica se o model foi instanciado corretamente
-    expect(mockAgendamentosModel).toHaveBeenCalledWith({
-      remetente: dto.remetente,
-      destinatarios: dto.destinatarios,
-      mensagem: dto.mensagem,
+  it('deve enviar mensagens para todos os destinatários e marcar como enviado', async () => {
+    const jobData: AgendamentoJobData = {
+      _id: '123',
+      destinatarios: ['5511999999999', '5511888888888'],
+      remetente: 'sessao1',
+      mensagem: 'Teste',
       status: 'pendente',
-      dataExecucao: new Date(dto.dataExecucao),
-    });
+      dataExecucao: new Date(),
+    };
 
-    // Verifica se a fila recebeu o job
-    expect(mockQueue.add).toHaveBeenCalledWith(
-      'enviar-mensagem',
-      expect.objectContaining<Partial<Agendamento>>({
-        remetente: dto.remetente,
-        mensagem: dto.mensagem,
-      }),
-      expect.objectContaining<{ delay: number; attempts: number }>({
-        delay: expect.any(Number) as number,
-        attempts: 3,
-      }),
+    (whatsAppService.sendMessage as jest.Mock).mockResolvedValue({
+      status: 'success',
+    });
+    (agendamentosModel.updateOne as jest.Mock).mockResolvedValue({});
+
+    const mockJob: Partial<Job<AgendamentoJobData>> = {
+      data: jobData,
+      id: 'job1',
+    };
+
+    await processor.handleEnviarMensagem(mockJob as Job<AgendamentoJobData>);
+
+    expect(whatsAppService.sendMessage).toHaveBeenCalledTimes(2);
+    expect(whatsAppService.sendMessage).toHaveBeenCalledWith(
+      jobData.remetente,
+      jobData.destinatarios[0],
+      jobData.mensagem,
+    );
+    expect(whatsAppService.sendMessage).toHaveBeenCalledWith(
+      jobData.remetente,
+      jobData.destinatarios[1],
+      jobData.mensagem,
+    );
+    expect(agendamentosModel.updateOne).toHaveBeenCalledWith(
+      { _id: jobData._id },
+      { status: 'enviado' },
     );
   });
 
-  it('deve lançar erro se a data for inválida', async () => {
-    const dto: CreateAgendamentoDto = {
-      remetente: '123',
-      destinatarios: ['456'],
-      mensagem: 'Olá',
-      dataExecucao: 'data-invalida', // string inválida proposital
+  it('não deve enviar mensagens se não houver destinatários', async () => {
+    const jobData: AgendamentoJobData = {
+      _id: '456',
+      destinatarios: [],
+      remetente: 'sessao1',
+      mensagem: 'Teste vazio',
+      status: 'pendente',
+      dataExecucao: new Date(),
     };
 
-    await expect(service.criarAgendamento(dto)).rejects.toThrow(
-      BadRequestException,
-    );
+    const mockJob: Partial<Job<AgendamentoJobData>> = {
+      data: jobData,
+      id: 'job2',
+    };
 
-    expect(mockQueue.add).not.toHaveBeenCalled();
+    await processor.handleEnviarMensagem(mockJob as Job<AgendamentoJobData>);
+
+    expect(whatsAppService.sendMessage).not.toHaveBeenCalled();
+    expect(agendamentosModel.updateOne).not.toHaveBeenCalled();
   });
 });
