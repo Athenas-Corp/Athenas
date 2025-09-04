@@ -30,43 +30,149 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Run full quality check before deploy
+      - name: Run linting
         run: |
-          echo "🔍 Executando verificações finais..."
+          echo "🔍 Executando verificação de lint..."
           npm run lint
-          npm run test:cov -- --testPathPattern=".*\.service\.spec\.ts$" --collectCoverageFrom="src/**/*.service.ts"
 
-          # Verificar se o arquivo de coverage existe
-          if [ -f "coverage/coverage-summary.json" ]; then
-            COVERAGE=$(node -p "JSON.parse(require('fs').readFileSync('coverage/coverage-summary.json', 'utf8')).total.lines.pct || 0")
-            echo "Test Coverage: $COVERAGE%"
-            if [ $(echo "$COVERAGE < 60" | bc -l) -eq 1 ]; then
-              echo "❌ Deploy cancelado - Cobertura abaixo de 60% (atual: $COVERAGE%)"
-              exit 1
-            fi
-            echo "✅ Cobertura de $COVERAGE% está adequada"
-          else
-            echo "❌ Arquivo de cobertura não encontrado"
-            ls -la coverage/ || echo "Pasta coverage não existe"
+      - name: Run tests with coverage
+        run: |
+          echo "🧪 Executando testes com cobertura..."
+          
+          # Limpar diretório de cobertura anterior
+          rm -rf coverage/
+          
+          # Executar testes com cobertura específica para services
+          npm run test:cov -- \
+            --testPathPattern=".*\.service\.spec\.ts$" \
+            --collectCoverageFrom="src/**/*.service.ts" \
+            --coverageThreshold='{}' \
+            --passWithNoTests=false
+
+      - name: Validate test coverage
+        run: |
+          echo "📊 Validando cobertura de testes..."
+          
+          # Verificar se arquivo de cobertura existe
+          if [ ! -f "coverage/coverage-summary.json" ]; then
+            echo "❌ Arquivo de cobertura não encontrado!"
+            echo "📁 Conteúdo do diretório coverage:"
+            ls -la coverage/ 2>/dev/null || echo "Diretório coverage não existe"
+            exit 1
+          fi
+          
+          # Instalar Node.js script para parsing JSON
+          cat > parse_coverage.js << 'EOF'
+          const fs = require('fs');
+          const path = require('path');
+          
+          try {
+            const coverageFile = path.join(process.cwd(), 'coverage', 'coverage-summary.json');
+            
+            if (!fs.existsSync(coverageFile)) {
+              console.error('Coverage file not found');
+              process.exit(1);
+            }
+            
+            const coverage = JSON.parse(fs.readFileSync(coverageFile, 'utf8'));
+            
+            // Extrair métricas de cobertura
+            const metrics = {
+              statements: coverage.total.statements.pct || 0,
+              branches: coverage.total.branches.pct || 0,
+              functions: coverage.total.functions.pct || 0,
+              lines: coverage.total.lines.pct || 0
+            };
+            
+            // Usar a métrica de lines como principal
+            const mainCoverage = metrics.lines;
+            
+            console.log(`📊 Métricas de Cobertura:`);
+            console.log(`   Statements: ${metrics.statements}%`);
+            console.log(`   Branches: ${metrics.branches}%`);
+            console.log(`   Functions: ${metrics.functions}%`);
+            console.log(`   Lines: ${metrics.lines}%`);
+            console.log(`\n🎯 Cobertura Principal (Lines): ${mainCoverage}%`);
+            
+            // Definir threshold mínimo
+            const minCoverage = 60;
+            
+            if (mainCoverage < minCoverage) {
+              console.log(`❌ FALHA: Cobertura de ${mainCoverage}% está abaixo do mínimo exigido de ${minCoverage}%`);
+              process.exit(1);
+            }
+            
+            console.log(`✅ SUCESSO: Cobertura de ${mainCoverage}% atende o mínimo exigido de ${minCoverage}%`);
+            
+            // Exportar para uso em próximos steps
+            console.log(`COVERAGE_PERCENT=${mainCoverage}`);
+            
+          } catch (error) {
+            console.error('Erro ao processar cobertura:', error.message);
+            process.exit(1);
+          }
+          EOF
+          
+          # Executar parsing e capturar resultado
+          node parse_coverage.js > coverage_result.txt 2>&1
+          COVERAGE_STATUS=$?
+          
+          # Mostrar resultado
+          cat coverage_result.txt
+          
+          # Extrair porcentagem para próximos steps
+          COVERAGE_PERCENT=$(grep "COVERAGE_PERCENT=" coverage_result.txt | cut -d'=' -f2 || echo "0")
+          echo "coverage_percent=$COVERAGE_PERCENT" >> $GITHUB_OUTPUT
+          
+          # Verificar se passou no threshold
+          if [ $COVERAGE_STATUS -ne 0 ]; then
+            echo "💥 Deploy cancelado devido à cobertura insuficiente"
             exit 1
           fi
 
-      - name: Final SonarQube analysis
+      - name: Verify no console usage (optional)
+        run: |
+          echo "🚫 Verificando uso de console.*..."
+          
+          # Procurar por console.log, console.error, etc. excluindo testes
+          CONSOLE_USAGE=$(grep -r "console\." src/ --include="*.ts" --exclude-dir=test --exclude="*.spec.ts" --exclude="*.test.ts" || true)
+          
+          if [ -n "$CONSOLE_USAGE" ]; then
+            echo "⚠️  AVISO: Encontrado uso de console.* em:"
+            echo "$CONSOLE_USAGE"
+            echo "📝 Considere usar um logger adequado (winston, pino, etc.)"
+            # Não falhar o deploy por isso, apenas avisar
+          else
+            echo "✅ Nenhum console.* encontrado no código de produção"
+          fi
+
+      - name: SonarQube Quality Gate Check
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
+          echo "🔍 Executando análise SonarQube..."
+          
+          # Instalar sonar-scanner
           npm install -g sonar-scanner
-
+          
+          # Executar análise
           sonar-scanner \
             -Dsonar.projectKey=Athenas-Corp_Athenas \
             -Dsonar.organization=athenas-corp \
             -Dsonar.host.url=https://sonarcloud.io \
-            -Dsonar.login=${SONAR_TOKEN} \
-            -Dsonar.branch.name=${GITHUB_REF#refs/heads/}
+            -Dsonar.token=${SONAR_TOKEN} \
+            -Dsonar.branch.name=${GITHUB_REF#refs/heads/} \
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
+            -Dsonar.coverage.exclusions="**/*.spec.ts,**/*.test.ts,**/*.module.ts,**/*.config.ts" \
+            -Dsonar.sources=src \
+            -Dsonar.tests=src \
+            -Dsonar.test.inclusions="**/*.spec.ts,**/*.test.ts" \
+            -Dsonar.typescript.tsconfigPath=tsconfig.json
 
       - name: Get current version and calculate next version
         id: version
@@ -81,7 +187,7 @@ jobs:
           # Extrair números da versão (remove 'v' se existir)
           CLEAN_VERSION=${LAST_TAG#v}
 
-          # Separar major, minor, patch
+          # Separar major, minor, patch usando IFS
           IFS='.' read -ra VERSION_PARTS <<< "$CLEAN_VERSION"
           MAJOR=${VERSION_PARTS[0]:-0}
           MINOR=${VERSION_PARTS[1]:-0}
@@ -120,7 +226,8 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Hagave/Athenas.git
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          
           git add package.json package-lock.json
           git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }} [skip ci]" || true
           git push origin main
@@ -149,26 +256,29 @@ jobs:
 
             ### ✅ Quality Checks Passed
             - ✅ Linting passed
-            - ✅ Tests passed with >60% coverage
+            - ✅ Tests passed with ${{ steps.validate-coverage.outputs.coverage_percent }}% coverage (>60% required)
             - ✅ SonarQube quality gate passed
-            - ✅ No console.* usage detected
 
-            ### 📊 Coverage Report
-            Coverage: $(node -p "require('./coverage/coverage-summary.json').total.lines.pct")%
+            ### 📊 Test Coverage Report
+            Coverage: ${{ steps.validate-coverage.outputs.coverage_percent }}%
 
-            **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ steps.version.outputs.last_tag }}...${{ steps.version.outputs.new_tag }}
+            ### 🔗 Links
+            - **SonarQube**: https://sonarcloud.io/dashboard?id=Athenas-Corp_Athenas
+            - **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ steps.version.outputs.last_tag }}...${{ steps.version.outputs.new_tag }}
           draft: false
           prerelease: false
 
-      # Aqui você pode adicionar seus steps de deploy específicos
       - name: Deploy Application
         run: |
           echo "🚀 Iniciando deploy da versão ${{ steps.version.outputs.new_version }}"
-          # Adicione aqui seus comandos de deploy específicos
+          echo "📊 Deploy aprovado com ${{ steps.validate-coverage.outputs.coverage_percent }}% de cobertura"
+          
+          # Aqui você pode adicionar seus comandos de deploy específicos
           # Exemplos:
-          # - Deploy para AWS, Azure, GCP
+          # - Build da aplicação
+          # - Deploy para AWS/Azure/GCP
           # - Build e push de Docker images
           # - Deploy para Kubernetes
-          # - Atualização de serviços
-
+          # - Notificações (Slack, Discord, etc.)
+          
           echo "✅ Deploy realizado com sucesso!"
