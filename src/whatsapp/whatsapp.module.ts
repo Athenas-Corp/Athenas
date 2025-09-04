@@ -1,15 +1,15 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { WhatsAppService } from '../services/whatsapp.service';
-import {
-  WhatsAppSession,
-  WhatsAppSessionSchema,
-} from '../../models/schemas/WhatsAppSchema/session.schema';
-import { WhatsAppController } from '../controllers/whatsapp.controller';
-import { WhatsAppGateway } from '../controllers/whatsApp.gateway';
 import { SocketModule } from 'src/socket/socket.module';
 import { RedisModule } from 'src/redis/redis.module';
 import { EventsModule } from 'src/events/events.module';
+import {
+  WhatsAppSession,
+  WhatsAppSessionSchema,
+} from 'src/models/schemas/WhatsAppSchema/session.schema';
+import { WhatsAppController } from './whatsapp.controller';
+import { WhatsAppGateway } from './whatsApp.gateway';
+import { WhatsAppService } from './whatsapp.service';
 
 @Module({
   imports: [

@@ -1,312 +1,149 @@
-name: Deploy and Tag Release
+name: Release Pipeline Detailed
 
 on:
   push:
     branches:
       - main
-      
-    paths-ignore:
-      - 'package.json'
-      - 'package-lock.json'
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
-
+    outputs:
+      node-version: 20
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v4
 
-      - name: Configure Git
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
-
-      - name: Use Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: 20
+
+      - name: Cache Node modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Run linting
-        run: |
-          echo "🔍 Executando verificação de lint..."
-          npm run lint
+      - name: Build NestJS project
+        run: npm run build
 
-      - name: Run tests with coverage
-        run: |
-          echo "🧪 Executando testes com cobertura..."
-          
-          # Limpar diretório de cobertura anterior
-          rm -rf coverage/
-          
-          # Executar todos os testes service com cobertura mais abrangente
-          npm run test:cov -- \
-            --testPathPattern=".*\.service\.spec\.ts$" \
-            --collectCoverageFrom="src/**/*.service.ts" \
-            --collectCoverageFrom="!src/**/*.spec.ts" \
-            --collectCoverageFrom="!src/**/*.test.ts" \
-            --collectCoverageFrom="!src/**/*.module.ts" \
-            --collectCoverageFrom="!src/**/*.config.ts" \
-            --collectCoverageFrom="!src/**/dto/*.ts" \
-            --collectCoverageFrom="!src/**/entities/*.ts" \
-            --collectCoverageFrom="!src/**/interfaces/*.ts" \
-            --forceExit \
-            --verbose
+  lint:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Validate test coverage
-        id: validate-coverage
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Cache Node modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+  test-and-coverage:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Cache Node modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run All Tests with Coverage
+        run: npm run test:all -- --coverage
+
+      - name: Check Coverage
         run: |
-          echo "📊 Validando cobertura de testes..."
-          
-          # Verificar se arquivo de cobertura existe
-          if [ ! -f "coverage/coverage-summary.json" ]; then
-            echo "❌ Arquivo de cobertura não encontrado!"
-            echo "📁 Listando conteúdo do diretório coverage:"
-            find . -name "coverage*" -type d -exec ls -la {} \; 2>/dev/null || echo "Nenhum diretório coverage encontrado"
-            find . -name "*coverage*" -type f 2>/dev/null || echo "Nenhum arquivo de coverage encontrado"
+          COVERAGE=$(node -e "console.log(require('./coverage/coverage-summary.json').total.lines.pct)")
+          echo "Total Coverage: $COVERAGE%"
+          if (( $(echo "$COVERAGE < 60" | bc -l) )); then
+            echo "❌ Coverage below 60%!"
             exit 1
           fi
-          
-          echo "✅ Arquivo coverage-summary.json encontrado"
-          echo "📄 Conteúdo do arquivo:"
-          cat coverage/coverage-summary.json
-          
-          # Usar Node.js para parsing preciso do JSON e validação
-          node -e "
-          const fs = require('fs');
-          const path = require('path');
-          
-          try {
-            const coverageFile = path.join(process.cwd(), 'coverage', 'coverage-summary.json');
-            const coverageContent = fs.readFileSync(coverageFile, 'utf8');
-            console.log('📄 Raw coverage content:');
-            console.log(coverageContent);
-            
-            const coverage = JSON.parse(coverageContent);
-            
-            // Verificar se coverage.total existe
-            if (!coverage.total) {
-              console.log('❌ coverage.total não encontrado no arquivo');
-              console.log('📊 Estrutura encontrada:', Object.keys(coverage));
-              process.exit(1);
-            }
-            
-            const lines = parseFloat(coverage.total.lines?.pct || 0);
-            const statements = parseFloat(coverage.total.statements?.pct || 0);
-            const functions = parseFloat(coverage.total.functions?.pct || 0);
-            const branches = parseFloat(coverage.total.branches?.pct || 0);
-            
-            console.log('📊 Métricas de Cobertura:');
-            console.log('   Lines: ' + lines + '%');
-            console.log('   Statements: ' + statements + '%');
-            console.log('   Functions: ' + functions + '%');
-            console.log('   Branches: ' + branches + '%');
-            
-            const minCoverage = 60;
-            const mainCoverage = lines;
-            
-            console.log('\\n🎯 Cobertura Principal: ' + mainCoverage + '%');
-            console.log('📏 Mínimo Exigido: ' + minCoverage + '%');
-            
-            // Validar se é um número válido
-            if (isNaN(mainCoverage) || mainCoverage === null) {
-              console.log('❌ Cobertura inválida ou não calculada corretamente');
-              console.log('🔍 Valor recebido:', coverage.total.lines?.pct);
-              process.exit(1);
-            }
-            
-            if (mainCoverage < minCoverage) {
-              console.log('\\n❌ FALHOU: Cobertura de ' + mainCoverage + '% abaixo do mínimo de ' + minCoverage + '%');
-              process.exit(1);
-            }
-            
-            console.log('\\n✅ SUCESSO: Cobertura de ' + mainCoverage + '% atende o mínimo de ' + minCoverage + '%');
-            
-            // Output para próximos steps
-            console.log('::set-output name=coverage_percent::' + mainCoverage);
-            
-          } catch (error) {
-            console.error('❌ Erro ao processar cobertura:', error.message);
-            console.error('📍 Stack:', error.stack);
-            process.exit(1);
-          }
-          "
-          
-          # Capturar a saída do coverage para uso posterior
-          COVERAGE_PERCENT=$(node -e "
-          try {
-            const coverage = require('./coverage/coverage-summary.json');
-            const pct = parseFloat(coverage.total?.lines?.pct || 0);
-            console.log(isNaN(pct) ? '0' : pct);
-          } catch(e) {
-            console.log('0');
-          }
-          ")
-          
-          echo "coverage_percent=$COVERAGE_PERCENT" >> $GITHUB_OUTPUT
-          echo "✅ Cobertura capturada: $COVERAGE_PERCENT%"
 
-      - name: Verify no console usage (optional)
-        run: |
-          echo "🚫 Verificando uso de console.*..."
-          
-          # Procurar por console.log, console.error, etc. excluindo testes e linhas comentadas
-          CONSOLE_USAGE=$(grep -r "^\s*console\." src/ --include="*.ts" --exclude-dir=test --exclude="*.spec.ts" --exclude="*.test.ts" | grep -v "^\s*//" | grep -v "^\s*\*" || true)
-          
-          if [ -n "$CONSOLE_USAGE" ]; then
-            echo "⚠️  AVISO: Encontrado uso de console.* ativo em:"
-            echo "$CONSOLE_USAGE"
-            echo "📝 Considere usar um logger adequado (winston, pino, etc.)"
-            # Não falhar o deploy por isso, apenas avisar
-          else
-            echo "✅ Nenhum console.* ativo encontrado no código de produção"
-          fi
+  sonar:
+    runs-on: ubuntu-latest
+    needs: test-and-coverage
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: SonarQube Quality Gate Check
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Cache Node modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@v3
+        with:
+          args: >
+            -Dsonar.projectKey=Athenas-Corp_Athenas
+            -Dsonar.organization=athenas-corp
+            -Dsonar.sources=src
+            -Dsonar.tests=src
+            -Dsonar.test.inclusions="**/*.spec.ts"
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+  deploy-and-tag:
+    runs-on: ubuntu-latest
+    needs: sonar
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create Tag
+        id: tag
         run: |
-          echo "🔍 Executando análise SonarQube..."
-          
-          # Verificar se coverage/lcov.info existe
-          if [ ! -f "coverage/lcov.info" ]; then
-            echo "⚠️ Arquivo lcov.info não encontrado, executando testes novamente..."
-            npm run test:cov -- --testPathPattern=".*\.service\.spec\.ts$"
-          fi
-          
-          # Instalar sonar-scanner
-          npm install -g sonar-scanner
-          
-          # Executar análise
-          sonar-scanner \
-            -Dsonar.projectKey=Athenas-Corp_Athenas \
-            -Dsonar.organization=athenas-corp \
-            -Dsonar.host.url=https://sonarcloud.io \
-            -Dsonar.token=${SONAR_TOKEN} \
-            -Dsonar.branch.name=${GITHUB_REF#refs/heads/} \
-            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-            -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info \
-            -Dsonar.coverage.exclusions="**/*.spec.ts,**/*.test.ts,**/*.module.ts,**/*.config.ts,**/dto/*.ts,**/entities/*.ts" \
-            -Dsonar.sources=src \
-            -Dsonar.tests=src \
-            -Dsonar.test.inclusions="**/*.spec.ts,**/*.test.ts" \
-            -Dsonar.typescript.tsconfigPath=tsconfig.json \
-            -Dsonar.qualitygate.wait=true \
-            -Dsonar.qualitygate.timeout=300
+          VERSION="v$(date +'%Y.%m.%d.%H%M')"
+          echo "TAG=$VERSION" >> $GITHUB_ENV
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git tag $VERSION
+          git push origin $VERSION
 
-      - name: Get current version and calculate next version
-        id: version
+      - name: Deploy to Production
         run: |
-          CURRENT_VERSION=$(jq -r .version package.json)
-          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-
-          # Buscar última tag
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "last_tag=$LAST_TAG" >> $GITHUB_OUTPUT
-
-          # Extrair números da versão (remove 'v' se existir)
-          CLEAN_VERSION=${LAST_TAG#v}
-
-          # Separar major, minor, patch usando IFS
-          IFS='.' read -ra VERSION_PARTS <<< "$CLEAN_VERSION"
-          MAJOR=${VERSION_PARTS[0]:-0}
-          MINOR=${VERSION_PARTS[1]:-0}
-          PATCH=${VERSION_PARTS[2]:-0}
-
-          # Incrementar patch
-          NEW_PATCH=$((PATCH + 1))
-          NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
-          NEW_TAG="v$NEW_VERSION"
-
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
-
-          echo "📋 Versão atual no package.json: $CURRENT_VERSION"
-          echo "📋 Última tag: $LAST_TAG"
-          echo "📋 Nova versão: $NEW_VERSION"
-          echo "📋 Nova tag: $NEW_TAG"
-
-      - name: Update package.json version
-        run: |
-          NEW_VERSION="${{ steps.version.outputs.new_version }}"
-
-          # Atualizar package.json
-          jq ".version = \"$NEW_VERSION\"" package.json > package.json.tmp
-          mv package.json.tmp package.json
-
-          # Atualizar package-lock.json se existir
-          if [ -f package-lock.json ]; then
-            jq ".version = \"$NEW_VERSION\"" package-lock.json > package-lock.json.tmp
-            mv package-lock.json.tmp package-lock.json
-          fi
-
-          echo "✅ Versão atualizada para $NEW_VERSION"
-
-      - name: Commit version update
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-          
-          git add package.json package-lock.json
-          git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }} [skip ci]" || true
-          git push origin main
-
-      - name: Create and push tag
-        run: |
-          NEW_TAG="${{ steps.version.outputs.new_tag }}"
-
-          # Criar tag anotada
-          git tag -a "$NEW_TAG" -m "Release $NEW_TAG - Auto-generated by GitHub Actions"
-
-          # Push da tag
-          git push origin "$NEW_TAG"
-
-          echo "✅ Tag $NEW_TAG criada e enviada"
-
-      - name: Create GitHub Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.version.outputs.new_tag }}
-          release_name: Release ${{ steps.version.outputs.new_tag }}
-          body: |
-            ## 🚀 Release ${{ steps.version.outputs.new_tag }}
-
-            ### ✅ Quality Checks Passed
-            - ✅ Linting passed
-            - ✅ Tests passed with ${{ steps.validate-coverage.outputs.coverage_percent }}% coverage (>60% required)
-            - ✅ SonarQube quality gate passed
-
-            ### 📊 Test Coverage Report
-            Coverage: ${{ steps.validate-coverage.outputs.coverage_percent }}%
-
-            ### 🔗 Links
-            - **SonarQube**: https://sonarcloud.io/dashboard?id=Athenas-Corp_Athenas
-            - **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ steps.version.outputs.last_tag }}...${{ steps.version.outputs.new_tag }}
-          draft: false
-          prerelease: false
-
-      - name: Deploy Application
-        run: |
-          echo "🚀 Iniciando deploy da versão ${{ steps.version.outputs.new_version }}"
-          echo "📊 Deploy aprovado com ${{ steps.validate-coverage.outputs.coverage_percent }}% de cobertura"
-          
-          # Aqui você pode adicionar seus comandos de deploy específicos
-          # Exemplos:
-          # - Build da aplicação
-          # - Deploy para AWS/Azure/GCP
-          # - Build e push de Docker images
-          # - Deploy para Kubernetes
-          # - Notificações (Slack, Discord, etc.)
-          
-          echo "✅ Deploy realizado com sucesso!"
+          echo "🚀 Deploying version $TAG to production..."
+          # aqui você integra com o seu deploy real

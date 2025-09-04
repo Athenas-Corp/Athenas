@@ -1,7 +1,7 @@
 import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
 import { Server } from 'socket.io';
-import { WhatsAppService } from '../services/whatsapp.service';
+import { WhatsAppService } from './whatsapp.service';
 
 @WebSocketGateway({
   cors: {
