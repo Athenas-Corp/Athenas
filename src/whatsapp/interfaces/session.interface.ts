@@ -9,6 +9,8 @@ export interface WhatsAppSessionData {
 
 export interface WhatsAppSession {
   sessionId: string;
-  sessionData: WhatsAppSessionData;
+  Data?: WhatsAppSessionData;
   status: string;
+  clientName?: string;
+  error?: string;
 }
