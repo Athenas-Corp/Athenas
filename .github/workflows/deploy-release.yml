@@ -91,11 +91,14 @@ jobs:
             exit 1
           fi
 
+      # ✅ UPLOAD DOS ARQUIVOS DE COVERAGE COMO ARTIFACT
       - name: Upload Coverage Reports
         uses: actions/upload-artifact@v4
         with:
           name: coverage-reports
-          path: coverage
+          path: |
+            coverage/
+            !coverage/tmp/
           retention-days: 1
 
   sonar:
@@ -104,6 +107,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # ✅ FETCH COMPLETO PARA EVITAR SHALLOW CLONE
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -122,12 +126,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # ✅ DOWNLOAD DOS ARQUIVOS DE COVERAGE NA RAIZ
       - name: Download Coverage Reports
         uses: actions/download-artifact@v4
         with:
           name: coverage-reports
           path: ./
 
+      # ✅ VERIFICAR SE OS ARQUIVOS FORAM BAIXADOS CORRETAMENTE
       - name: Verify Coverage Files
         run: |
           echo "📋 Checking downloaded files..."
@@ -182,5 +188,5 @@ jobs:
 
       - name: Deploy to Production
         run: |
-          echo "Deploying version $TAG to production..."
+          echo "🚀 Deploying version $TAG to production..."
           # aqui você integra com o seu deploy real
