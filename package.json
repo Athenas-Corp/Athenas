@@ -22,7 +22,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     
     "sonar": "sonar-scanner"
-  }
+  },
   "dependencies": {
     "@golevelup/nestjs-rabbitmq": "^6.0.1",
     "@nestjs/bull": "^11.0.3",
