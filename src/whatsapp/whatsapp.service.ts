@@ -7,11 +7,11 @@ import {
 import { Client, LocalAuth } from 'whatsapp-web.js';
 import { DeleteResult, Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
-import { SocketGateway } from '../../socket/socket.gateway';
-import { SessionResponseDto } from '../dto/session-response.dto';
-import { IWhatsAppSession } from '../interfaces/whatsapp.interface';
-import { RedisService } from '../../redis/redis.service';
-import { EventsService } from '../../events/events.service';
+import { SocketGateway } from '../socket/socket.gateway';
+import { SessionResponseDto } from './dto/session-response.dto';
+import { IWhatsAppSession } from './interfaces/whatsapp.interface';
+import { RedisService } from '../redis/redis.service';
+import { EventsService } from '../events/events.service';
 
 @Injectable()
 export class WhatsAppService {

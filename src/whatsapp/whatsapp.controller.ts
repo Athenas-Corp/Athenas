@@ -7,9 +7,9 @@ import {
   Param,
   Put,
 } from '@nestjs/common';
-import { WhatsAppService } from '../services/whatsapp.service';
-import { CreateSessionDto } from '../dto/create-session.dto';
-import { SessionResponseDto } from '../dto/session-response.dto';
+import { WhatsAppService } from './whatsapp.service';
+import { CreateSessionDto } from './dto/create-session.dto';
+import { SessionResponseDto } from './dto/session-response.dto';
 
 @Controller('whatsapp')
 export class WhatsAppController {

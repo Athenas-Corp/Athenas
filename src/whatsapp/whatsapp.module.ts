@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { WhatsAppService } from '../services/whatsapp.service';
+import { WhatsAppService } from '../whatsapp.service';
 import {
   WhatsAppSession,
   WhatsAppSessionSchema,
