@@ -67,7 +67,7 @@ export class RedisService {
     }
 
     try {
-      return JSON.parse(data);
+      return JSON.parse(data) as WhatsAppClientState;
     } catch (error) {
       this.logger.error(
         `Erro ao parsear sessão do Redis: ${clientName}`,
@@ -116,7 +116,7 @@ export class RedisService {
     sessions.forEach((sessionData) => {
       if (sessionData) {
         try {
-          const session = JSON.parse(sessionData);
+          const session = JSON.parse(sessionData) as WhatsAppClientState;
           activeSessions.push(session);
         } catch (error) {
           this.logger.error('Erro ao parsear sessão:', error);
