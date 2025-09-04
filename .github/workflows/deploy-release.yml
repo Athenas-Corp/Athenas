@@ -47,12 +47,19 @@ jobs:
           # Limpar diretório de cobertura anterior
           rm -rf coverage/
           
-          # Executar testes com cobertura específica para services
+          # Executar todos os testes service com cobertura mais abrangente
           npm run test:cov -- \
             --testPathPattern=".*\.service\.spec\.ts$" \
             --collectCoverageFrom="src/**/*.service.ts" \
-            --coverageThreshold='{}' \
-            --passWithNoTests=false
+            --collectCoverageFrom="!src/**/*.spec.ts" \
+            --collectCoverageFrom="!src/**/*.test.ts" \
+            --collectCoverageFrom="!src/**/*.module.ts" \
+            --collectCoverageFrom="!src/**/*.config.ts" \
+            --collectCoverageFrom="!src/**/dto/*.ts" \
+            --collectCoverageFrom="!src/**/entities/*.ts" \
+            --collectCoverageFrom="!src/**/interfaces/*.ts" \
+            --forceExit \
+            --verbose
 
       - name: Validate test coverage
         id: validate-coverage
@@ -62,24 +69,40 @@ jobs:
           # Verificar se arquivo de cobertura existe
           if [ ! -f "coverage/coverage-summary.json" ]; then
             echo "❌ Arquivo de cobertura não encontrado!"
-            echo "📁 Conteúdo do diretório coverage:"
-            ls -la coverage/ 2>/dev/null || echo "Diretório coverage não existe"
+            echo "📁 Listando conteúdo do diretório coverage:"
+            find . -name "coverage*" -type d -exec ls -la {} \; 2>/dev/null || echo "Nenhum diretório coverage encontrado"
+            find . -name "*coverage*" -type f 2>/dev/null || echo "Nenhum arquivo de coverage encontrado"
             exit 1
           fi
           
-          # Usar Node.js para parsing preciso do JSON
+          echo "✅ Arquivo coverage-summary.json encontrado"
+          echo "📄 Conteúdo do arquivo:"
+          cat coverage/coverage-summary.json
+          
+          # Usar Node.js para parsing preciso do JSON e validação
           node -e "
           const fs = require('fs');
           const path = require('path');
           
           try {
             const coverageFile = path.join(process.cwd(), 'coverage', 'coverage-summary.json');
-            const coverage = JSON.parse(fs.readFileSync(coverageFile, 'utf8'));
+            const coverageContent = fs.readFileSync(coverageFile, 'utf8');
+            console.log('📄 Raw coverage content:');
+            console.log(coverageContent);
             
-            const lines = coverage.total.lines.pct || 0;
-            const statements = coverage.total.statements.pct || 0;
-            const functions = coverage.total.functions.pct || 0;
-            const branches = coverage.total.branches.pct || 0;
+            const coverage = JSON.parse(coverageContent);
+            
+            // Verificar se coverage.total existe
+            if (!coverage.total) {
+              console.log('❌ coverage.total não encontrado no arquivo');
+              console.log('📊 Estrutura encontrada:', Object.keys(coverage));
+              process.exit(1);
+            }
+            
+            const lines = parseFloat(coverage.total.lines?.pct || 0);
+            const statements = parseFloat(coverage.total.statements?.pct || 0);
+            const functions = parseFloat(coverage.total.functions?.pct || 0);
+            const branches = parseFloat(coverage.total.branches?.pct || 0);
             
             console.log('📊 Métricas de Cobertura:');
             console.log('   Lines: ' + lines + '%');
@@ -93,46 +116,58 @@ jobs:
             console.log('\\n🎯 Cobertura Principal: ' + mainCoverage + '%');
             console.log('📏 Mínimo Exigido: ' + minCoverage + '%');
             
+            // Validar se é um número válido
+            if (isNaN(mainCoverage) || mainCoverage === null) {
+              console.log('❌ Cobertura inválida ou não calculada corretamente');
+              console.log('🔍 Valor recebido:', coverage.total.lines?.pct);
+              process.exit(1);
+            }
+            
             if (mainCoverage < minCoverage) {
               console.log('\\n❌ FALHOU: Cobertura de ' + mainCoverage + '% abaixo do mínimo de ' + minCoverage + '%');
               process.exit(1);
             }
             
             console.log('\\n✅ SUCESSO: Cobertura de ' + mainCoverage + '% atende o mínimo de ' + minCoverage + '%');
-            console.log('COVERAGE_PERCENT=' + mainCoverage);
+            
+            // Output para próximos steps
+            console.log('::set-output name=coverage_percent::' + mainCoverage);
             
           } catch (error) {
             console.error('❌ Erro ao processar cobertura:', error.message);
+            console.error('📍 Stack:', error.stack);
             process.exit(1);
           }
-          " > coverage_result.txt 2>&1
+          "
           
-          # Verificar resultado
-          if [ $? -eq 0 ]; then
-            cat coverage_result.txt
-            COVERAGE_PERCENT=$(grep "COVERAGE_PERCENT=" coverage_result.txt | cut -d'=' -f2 || echo "0")
-            echo "coverage_percent=$COVERAGE_PERCENT" >> $GITHUB_OUTPUT
-            echo "✅ Cobertura validada com sucesso: $COVERAGE_PERCENT%"
-          else
-            cat coverage_result.txt
-            echo "💥 Falha na validação de cobertura"
-            exit 1
-          fi
+          # Capturar a saída do coverage para uso posterior
+          COVERAGE_PERCENT=$(node -e "
+          try {
+            const coverage = require('./coverage/coverage-summary.json');
+            const pct = parseFloat(coverage.total?.lines?.pct || 0);
+            console.log(isNaN(pct) ? '0' : pct);
+          } catch(e) {
+            console.log('0');
+          }
+          ")
+          
+          echo "coverage_percent=$COVERAGE_PERCENT" >> $GITHUB_OUTPUT
+          echo "✅ Cobertura capturada: $COVERAGE_PERCENT%"
 
       - name: Verify no console usage (optional)
         run: |
           echo "🚫 Verificando uso de console.*..."
           
-          # Procurar por console.log, console.error, etc. excluindo testes
-          CONSOLE_USAGE=$(grep -r "console\." src/ --include="*.ts" --exclude-dir=test --exclude="*.spec.ts" --exclude="*.test.ts" || true)
+          # Procurar por console.log, console.error, etc. excluindo testes e linhas comentadas
+          CONSOLE_USAGE=$(grep -r "^\s*console\." src/ --include="*.ts" --exclude-dir=test --exclude="*.spec.ts" --exclude="*.test.ts" | grep -v "^\s*//" | grep -v "^\s*\*" || true)
           
           if [ -n "$CONSOLE_USAGE" ]; then
-            echo "⚠️  AVISO: Encontrado uso de console.* em:"
+            echo "⚠️  AVISO: Encontrado uso de console.* ativo em:"
             echo "$CONSOLE_USAGE"
             echo "📝 Considere usar um logger adequado (winston, pino, etc.)"
             # Não falhar o deploy por isso, apenas avisar
           else
-            echo "✅ Nenhum console.* encontrado no código de produção"
+            echo "✅ Nenhum console.* ativo encontrado no código de produção"
           fi
 
       - name: SonarQube Quality Gate Check
@@ -140,6 +175,12 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           echo "🔍 Executando análise SonarQube..."
+          
+          # Verificar se coverage/lcov.info existe
+          if [ ! -f "coverage/lcov.info" ]; then
+            echo "⚠️ Arquivo lcov.info não encontrado, executando testes novamente..."
+            npm run test:cov -- --testPathPattern=".*\.service\.spec\.ts$"
+          fi
           
           # Instalar sonar-scanner
           npm install -g sonar-scanner
@@ -152,11 +193,14 @@ jobs:
             -Dsonar.token=${SONAR_TOKEN} \
             -Dsonar.branch.name=${GITHUB_REF#refs/heads/} \
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-            -Dsonar.coverage.exclusions="**/*.spec.ts,**/*.test.ts,**/*.module.ts,**/*.config.ts" \
+            -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info \
+            -Dsonar.coverage.exclusions="**/*.spec.ts,**/*.test.ts,**/*.module.ts,**/*.config.ts,**/dto/*.ts,**/entities/*.ts" \
             -Dsonar.sources=src \
             -Dsonar.tests=src \
             -Dsonar.test.inclusions="**/*.spec.ts,**/*.test.ts" \
-            -Dsonar.typescript.tsconfigPath=tsconfig.json
+            -Dsonar.typescript.tsconfigPath=tsconfig.json \
+            -Dsonar.qualitygate.wait=true \
+            -Dsonar.qualitygate.timeout=300
 
       - name: Get current version and calculate next version
         id: version
