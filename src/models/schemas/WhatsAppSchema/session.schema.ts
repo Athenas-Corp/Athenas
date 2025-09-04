@@ -6,7 +6,7 @@ export type WhatsAppSessionDocument = WhatsAppSession & Document;
 @Schema({ timestamps: true })
 export class WhatsAppSession {
   @Prop({ required: true })
-  clientName: string;
+  sessionId: string;
 
   @Prop()
   status: string;

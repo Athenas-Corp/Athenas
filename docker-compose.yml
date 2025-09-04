@@ -12,6 +12,20 @@ services:
     networks:
       - athenas-net
 
+  postgres:
+    image: postgres:16
+    container_name: athenas-postgres
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: 123mudar
+      POSTGRES_DB: athenas
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - athenas-net
+
   mongodb:
     image: mongo:6
     container_name: athenas-mongodb
@@ -35,6 +49,7 @@ services:
       - athenas-net
 
 volumes:
+  postgres-data:
   redis-data:
   mongo-data:
 
