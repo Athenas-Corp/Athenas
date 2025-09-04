@@ -8,7 +8,7 @@ import {
   Agendamento,
   AgendamentoSchema,
 } from 'src/models/schemas/AgendamentosSchema/agendamentos.schema';
-import { WhatsAppModule } from 'src/whatsapp/modules/whatsapp.module';
+import { WhatsAppModule } from 'src/whatsapp/whatsapp.module';
 
 @Module({
   imports: [
