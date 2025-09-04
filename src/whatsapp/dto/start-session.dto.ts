@@ -1,3 +1,7 @@
+import { IsString, IsNotEmpty } from 'class-validator';
+
 export class StartSessionDto {
-  sessionId: string;
+  @IsString()
+  @IsNotEmpty()
+  clientName: string;
 }
