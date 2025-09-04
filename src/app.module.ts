@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-<<<<<<< HEAD
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { WhatsAppModule } from './whatsapp/modules/whatsapp.module';
@@ -31,14 +30,5 @@ import { HandleWhatsAppClientModule } from './handle-whata-app-client/handle-wha
     EventsModule,
     HandleWhatsAppClientModule,
   ],
-=======
-import { AppService } from './app.service';
-
-@Module({
-  providers: [AppService],
-  controllers: [],
-  imports: [],
-  exports: [],
->>>>>>> 0098d19 (sdf)
 })
 export class AppModule {}
