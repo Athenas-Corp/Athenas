@@ -1,35 +1,41 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { WhatsAppService } from '../services/whatsapp.service';
 import { getModelToken } from '@nestjs/mongoose';
-import { Client } from 'whatsapp-web.js';
+import { ConflictException, NotFoundException } from '@nestjs/common';
+import { RedisService } from '../../redis/redis.service';
+import { EventsService } from '../../events/events.service';
+import { SocketGateway } from '../../socket/socket.gateway';
 
 jest.mock('whatsapp-web.js', () => ({
   Client: jest.fn().mockImplementation(() => ({
-    initialize: jest.fn(),
-    on: jest.fn(),
-    sendMessage: jest.fn(),
+    destroy: jest.fn(),
   })),
   LocalAuth: jest.fn(),
-}));
-
-jest.mock('qrcode-terminal', () => ({
-  generate: jest.fn(),
 }));
 
 describe('WhatsAppService', () => {
   let service: WhatsAppService;
 
-  const mockUpdateOne = jest.fn();
-  const mockFind = jest.fn();
-  const mockCreate = jest.fn();
-
   const mockSessionModel = {
-    updateOne: mockUpdateOne,
-    find: mockFind,
-    create: mockCreate,
+    findOne: jest.fn(),
+    find: jest.fn(),
+    create: jest.fn(),
+    findOneAndUpdate: jest.fn(),
+    deleteOne: jest.fn(),
   };
 
-  const MockedClient = Client as unknown as jest.MockedClass<typeof Client>;
+  const mockRedisService = {
+    deleteSession: jest.fn(),
+    getSession: jest.fn(),
+    getSessionTTL: jest.fn(),
+    isSessionActive: jest.fn(),
+  };
+
+  const mockEventsService = {
+    registerClientEvents: jest.fn(),
+  };
+
+  const mockSocketGateway = {};
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -39,99 +45,142 @@ describe('WhatsAppService', () => {
           provide: getModelToken('WhatsAppSession'),
           useValue: mockSessionModel,
         },
+        { provide: RedisService, useValue: mockRedisService },
+        { provide: EventsService, useValue: mockEventsService },
+        { provide: SocketGateway, useValue: mockSocketGateway },
       ],
     }).compile();
 
     service = module.get<WhatsAppService>(WhatsAppService);
-
+    jest.spyOn(service['logger'], 'log').mockImplementation(() => {});
     jest.spyOn(service['logger'], 'error').mockImplementation(() => {});
+    jest.spyOn(service['logger'], 'warn').mockImplementation(() => {});
   });
 
   afterEach(() => {
     jest.clearAllMocks();
-    MockedClient.mockReset();
-    service['sessions'].clear();
   });
 
-  describe('enviarRespostaAutomatica', () => {
-    it('deve enviar mensagem dentro do horário comercial', async () => {
-      const mockDate = new Date('2025-08-12T10:00:00-03:00');
+  // helper para simular query com exec()
+  function mockExec<T>(value: T): { exec: jest.Mock<Promise<T>, []> } {
+    return {
+      exec: jest.fn<Promise<T>, []>().mockResolvedValue(value),
+    };
+  }
 
-      jest.spyOn(Date, 'now').mockReturnValue(mockDate.getTime());
+  describe('createClient', () => {
+    it('deve criar um novo client se não existir', async () => {
+      mockSessionModel.findOne.mockReturnValue(mockExec(null));
+      mockSessionModel.create.mockResolvedValue({
+        clientName: 'teste',
+        status: 'pending',
+      });
 
-      const sendMessageSpy = jest
-        .spyOn(service, 'sendMessage')
-        .mockImplementation(() => {
-          service['logger'].log('mock sendMessage chamado');
-          return Promise.resolve({ status: 'success' });
-        });
+      const result = await service.createClient('teste');
 
-      const loggerLogSpy = jest.spyOn(service['logger'], 'log');
-      const loggerErrorSpy = jest.spyOn(service['logger'], 'error');
-
-      const result = await service.enviarRespostaAutomatica(
-        'sessao',
-        '559999999999',
-      );
-
-      expect(sendMessageSpy).toHaveBeenCalledWith(
-        'sessao',
-        '559999999999',
-        'Olá! Recebemos sua mensagem e logo entraremos em contato.',
-      );
-      expect(result.status).toBe('success');
-      expect(loggerLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Mensagem automática enviada'),
-      );
-      expect(loggerErrorSpy).not.toHaveBeenCalled();
-
-      jest.restoreAllMocks();
+      expect(mockSessionModel.create).toHaveBeenCalledWith({
+        clientName: 'teste',
+        status: 'pending',
+      });
+      expect(result).toEqual({ clientName: 'teste', status: 'pending' });
     });
 
-    it('deve enviar mensagem fora do horário comercial', async () => {
-      // Data fora do horário comercial: 12 de agosto de 2025, 23h00 UTC
-      const mockDate = new Date('2025-08-12T23:00:00Z');
-
-      // MOCKAR somente Date.now()
-      jest.spyOn(Date, 'now').mockReturnValue(mockDate.getTime());
-
-      const sendMessageSpy = jest
-        .spyOn(service, 'sendMessage')
-        .mockResolvedValue({ status: 'success' });
-
-      const loggerLogSpy = jest.spyOn(service['logger'], 'log');
-
-      await service.enviarRespostaAutomatica('sessao', '559999999999');
-
-      expect(sendMessageSpy).toHaveBeenCalledWith(
-        'sessao',
-        '559999999999',
-        service['mensagemForaHorario'], // CORRETO: mensagemForaHorario
-      );
-      expect(loggerLogSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Mensagem automática enviada'),
+    it('deve lançar erro se client já existir', async () => {
+      mockSessionModel.findOne.mockReturnValue(
+        mockExec({ clientName: 'teste' }),
       );
 
-      jest.restoreAllMocks();
+      await expect(service.createClient('teste')).rejects.toThrow(
+        ConflictException,
+      );
+    });
+  });
+
+  describe('connectClient', () => {
+    it('deve conectar cliente existente', async () => {
+      mockSessionModel.findOne.mockReturnValue(
+        mockExec({ clientName: 'teste' }),
+      );
+
+      await service.connectClient('teste');
+
+      expect(mockEventsService.registerClientEvents).toHaveBeenCalled();
     });
 
-    it('deve lidar com erro inesperado', async () => {
-      jest
-        .spyOn(service, 'sendMessage')
-        .mockRejectedValue(new Error('falha inesperada'));
-      const loggerErrorSpy = jest.spyOn(service['logger'], 'error');
+    it('deve lançar erro se client não existir', async () => {
+      mockSessionModel.findOne.mockReturnValue(mockExec(null));
 
-      const result = await service.enviarRespostaAutomatica(
-        'sessao',
-        '559999999999',
+      await expect(service.connectClient('teste')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('deleteSession', () => {
+    it('deve deletar client existente', async () => {
+      // findOne com exec()
+      mockSessionModel.findOne.mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ clientName: 'teste' }),
+      });
+
+      // deleteOne retorna resultado direto
+      mockSessionModel.deleteOne.mockResolvedValue({ deletedCount: 1 });
+
+      const result = await service.deleteSession('teste');
+
+      expect(mockRedisService.deleteSession).toHaveBeenCalledWith('teste');
+      expect(result).toEqual({ deletedCount: 1 });
+    });
+
+    it('deve lançar erro se client não existir', async () => {
+      mockSessionModel.findOne.mockReturnValue({
+        exec: jest.fn().mockResolvedValue(null),
+      });
+
+      await expect(service.deleteSession('teste')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('updateClientName', () => {
+    it('deve atualizar nome do cliente', async () => {
+      mockRedisService.isSessionActive.mockResolvedValue(false);
+      mockSessionModel.findOneAndUpdate.mockReturnValue(
+        mockExec({ clientName: 'novoNome' }),
       );
 
-      expect(result.status).toBe('error');
-      expect(loggerErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining(
-          'Erro inesperado ao enviar mensagem automática: falha inesperada',
-        ),
-      );
+      const result = await service.updateClientName('antigoNome', 'novoNome');
+
+      expect(result).toEqual({ status: 'updated', clientName: 'novoNome' });
+    });
+
+    it('não deve atualizar se cliente estiver ativo', async () => {
+      mockRedisService.isSessionActive.mockResolvedValue(true);
+
+      const result = await service.updateClientName('antigoNome', 'novoNome');
+
+      expect(result).toEqual({
+        status: 'error',
+        error: 'Não é possível renomear um cliente ativo. Desconecte primeiro.',
+      });
+    });
+  });
+
+  describe('getClientStatus', () => {
+    it('deve retornar status do cliente', async () => {
+      mockSessionModel.findOne.mockReturnValue(mockExec({ status: 'pending' }));
+      mockRedisService.getSession.mockResolvedValue({ status: 'connected' });
+      mockRedisService.getSessionTTL.mockResolvedValue(120);
+
+      const result = await service.getClientStatus('teste');
+
+      expect(result).toEqual({
+        database: 'pending',
+        redis: 'connected',
+        ttl: 120,
+        isActive: true,
+      });
     });
   });
 });

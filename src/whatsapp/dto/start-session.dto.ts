@@ -1,3 +1,5 @@
 export class StartSessionDto {
-  sessionId: string;
+  @IsString()
+  @IsNotEmpty()
+  clientName: string;
 }
