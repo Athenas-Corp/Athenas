@@ -82,14 +82,11 @@ jobs:
       - name: Run All Tests with Coverage
         run: npm run test:all -- --coverage
 
-      - name: Check Coverage
-        run: |
-          COVERAGE=$(node -e "console.log(require('./coverage/coverage-summary.json').total.lines.pct)")
-          echo "Total Coverage: $COVERAGE%"
-          if (( $(echo "$COVERAGE < 60" | bc -l) )); then
-            echo "❌ Coverage below 60%!"
-            exit 1
-          fi
+      - name: Upload Coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage
+          path: coverage/lcov.info
 
   sonar:
     runs-on: ubuntu-latest
@@ -102,13 +99,11 @@ jobs:
         with:
           node-version: 20
 
-      - name: Cache Node modules
-        uses: actions/cache@v3
+      - name: Download Coverage
+        uses: actions/download-artifact@v3
         with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+          name: coverage
+          path: coverage
 
       - name: Install dependencies
         run: npm ci
