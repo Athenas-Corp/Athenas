@@ -30,6 +30,7 @@ export class AgendamentosProcessor {
 
   //   this.logger.log(`Processando job id ${job.id} para agendamento ${id}`);
 
+
   //   if (!Array.isArray(ag.destinatarios) || ag.destinatarios.length === 0) {
   //     this.logger.warn(`Agendamento ${id} não possui destinatários.`);
   //     return;
@@ -38,6 +39,7 @@ export class AgendamentosProcessor {
   //   try {
   //     for (const numero of ag.destinatarios) {
   //       this.logger.log(`Enviando mensagem para ${numero}`);
+
 
   //       const resultado = await this.whatsAppService.sendMessage(
   //         ag.remetente,
@@ -56,6 +58,7 @@ export class AgendamentosProcessor {
 
   //       this.logger.log(`Mensagem enviada para ${numero} no agendamento ${id}`);
   //     }
+
 
   //     await this.agendamentosModel.updateOne(
   //       { _id: ag._id },

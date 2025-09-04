@@ -22,6 +22,7 @@ export class WhatsAppService {
 
   constructor(
     @InjectModel('WhatsAppSession')
+
     private readonly sessionModel: Model<IWhatsAppSession>,
     private readonly socketGateway: SocketGateway,
     private readonly redisService: RedisService,
@@ -67,8 +68,10 @@ export class WhatsAppService {
     return this.sessionModel.create({
       status: 'pending',
       clientName,
+
     });
   }
+
 
   async connectClient(clientName: string): Promise<void> {
     try {
@@ -78,6 +81,7 @@ export class WhatsAppService {
           `Sessão ${clientName} não encontrada. Crie uma nova antes de conectar.`,
         );
       }
+
 
       if (this.activeClients.has(clientName)) {
         throw new ConflictException(`Cliente ${clientName} já está conectado`);
@@ -101,6 +105,7 @@ export class WhatsAppService {
 
       throw error;
     }
+
   }
 
   async deleteSession(clientName: string): Promise<DeleteResult> {
@@ -115,8 +120,10 @@ export class WhatsAppService {
         throw new NotFoundException('Client não existe');
       }
 
+
       await client.destroy();
       this.initializingClients.delete(clientName);
+
     }
 
     if (this.activeClients.has(clientName)) {
@@ -184,7 +191,9 @@ export class WhatsAppService {
           `Sessão ${cleanOldName} não encontrada para atualização`,
         );
         return { status: 'not_found', error: 'Sessão não encontrada' };
+
       }
+      this.logger.log(`Mensagem automática enviada para ${number}`);
 
       this.logger.log(`Sessão atualizada: ${cleanOldName} → ${cleanNewName}`);
       return { status: 'updated', clientName: cleanNewName };
