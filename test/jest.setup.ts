@@ -3,24 +3,36 @@
  * This file is executed before each test file
  */
 
+import pino from 'pino';
+
+// Cria um logger para os testes
+export const logger = pino({
+  level: 'debug',
+  transport: {
+    target: 'pino-pretty',
+    options: {
+      colorize: true,
+      translateTime: 'SYS:standard',
+    },
+  },
+});
+
 // Set timezone for consistent date testing
 process.env.TZ = 'UTC';
 
 // Increase test timeout for integration tests
 jest.setTimeout(30000);
 
-// Mock console methods to avoid noise in tests (optional)
-// Uncomment if you want to suppress console logs during tests
-/*
+// Mock console methods to route through logger (optional)
+// Assim você evita avisos do ESLint
 global.console = {
   ...console,
-  log: jest.fn(),
-  debug: jest.fn(),
-  info: jest.fn(),
-  warn: jest.fn(),
-  error: jest.fn(),
+  log: (...args: any[]) => logger.info(...args),
+  debug: (...args: any[]) => logger.debug(...args),
+  info: (...args: any[]) => logger.info(...args),
+  warn: (...args: any[]) => logger.warn(...args),
+  error: (...args: any[]) => logger.error(...args),
 };
-*/
 
 // Global test utilities
 global.beforeEach(() => {
@@ -28,22 +40,23 @@ global.beforeEach(() => {
   jest.clearAllMocks();
 });
 
-// Custom matchers or global test setup can go here
+// Custom matchers or global test setup
 beforeAll(async () => {
-  // Global setup before all tests
+  logger.info('Global test setup started');
 });
 
 afterAll(async () => {
-  // Global cleanup after all tests
+  logger.info('Global test teardown finished');
 });
 
 // Handle unhandled promise rejections in tests
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  // Don't exit the process in test environment
+  logger.error({ reason, promise }, 'Unhandled Rejection detected in tests');
+  // Não exit no ambiente de teste
 });
 
 // Export test utilities if needed
 export const testUtils = {
-  // Add common test utilities here
+  logger,
+  // Add other common test utilities here
 };
