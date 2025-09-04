@@ -27,18 +27,27 @@ jest.setTimeout(30000);
 // Assim você evita avisos do ESLint
 global.console = {
   ...console,
-  log: (...args: any[]) => logger.info(...args),
-  debug: (...args: any[]) => logger.debug(...args),
-  info: (...args: any[]) => logger.info(...args),
-  warn: (...args: any[]) => logger.warn(...args),
-  error: (...args: any[]) => logger.error(...args),
+  log: (...args: unknown[]): void => logger.info(...args),
+  debug: (...args: unknown[]): void => logger.debug(...args),
+  info: (...args: unknown[]): void => logger.info(...args),
+  warn: (...args: unknown[]): void => logger.warn(...args),
+  error: (...args: unknown[]): void => logger.error(...args),
 };
 
+
 // Global test utilities
-global.beforeEach(() => {
-  // Clear all mocks before each test
+global.beforeEach((): void => {
   jest.clearAllMocks();
 });
+
+beforeAll(async (): Promise<void> => {
+  logger.info('Global test setup started');
+});
+
+afterAll(async (): Promise<void> => {
+  logger.info('Global test teardown finished');
+});
+
 
 // Custom matchers or global test setup
 beforeAll(async () => {
@@ -50,10 +59,10 @@ afterAll(async () => {
 });
 
 // Handle unhandled promise rejections in tests
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason: unknown, promise: Promise<unknown>) => {
   logger.error({ reason, promise }, 'Unhandled Rejection detected in tests');
-  // Não exit no ambiente de teste
 });
+
 
 // Export test utilities if needed
 export const testUtils = {
