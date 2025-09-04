@@ -63,6 +63,9 @@ client
 .wwebjs_cache
 .wwebjs_auth
 sessions
+**/.wwebjs_auth/
+**/.wwebjs_cache/
+**/sessions/
 
 #Prisma
 generated
