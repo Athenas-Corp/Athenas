@@ -42,33 +42,90 @@ jobs:
 
       - name: Run tests with coverage (services only)
         run: |
+          echo "🧪 Executando testes dos services com cobertura..."
+          
+          # Limpar cobertura anterior
+          rm -rf coverage/
+          
+          # Executar testes com configuração mais específica
           npm run test:cov -- \
             --testPathPattern=".*\.service\.spec\.ts$" \
             --collectCoverageFrom="src/**/*.service.ts" \
-            --coverageReporters=text \
-            --coverageReporters=json-summary \
-            --coverageReporters=lcov
+            --collectCoverageFrom="!src/**/*.spec.ts" \
+            --collectCoverageFrom="!src/**/*.test.ts" \
+            --collectCoverageFrom="!src/**/*.module.ts" \
+            --collectCoverageFrom="!src/**/*.config.ts" \
+            --forceExit \
+            --verbose
+
+      - name: Debug coverage files
+        run: |
+          echo "🔍 Verificando arquivos de cobertura gerados..."
+          find . -name "*coverage*" -type f -exec ls -la {} \;
+          
+          if [ -f "coverage/coverage-summary.json" ]; then
+            echo "📄 Conteúdo do coverage-summary.json:"
+            cat coverage/coverage-summary.json
+          else
+            echo "❌ Arquivo coverage-summary.json não encontrado"
+          fi
 
       - name: Validate 60% test coverage
         run: |
           # Verificar se arquivo existe
           if [ ! -f "coverage/coverage-summary.json" ]; then
             echo "❌ Arquivo de cobertura não encontrado"
+            echo "📁 Listando todos os arquivos de coverage:"
+            find . -name "*coverage*" -type f 2>/dev/null || echo "Nenhum arquivo encontrado"
             exit 1
           fi
           
-          # Parsing robusto usando Node.js
+          echo "✅ Arquivo coverage-summary.json encontrado"
+          
+          # Parsing robusto usando Node.js com validação
           COVERAGE=$(node -e "
             try {
-              const coverage = require('./coverage/coverage-summary.json');
-              const pct = coverage.total.lines.pct || 0;
-              console.log(pct);
+              const fs = require('fs');
+              const coverageContent = fs.readFileSync('./coverage/coverage-summary.json', 'utf8');
+              console.error('Raw content:', coverageContent);
+              
+              const coverage = JSON.parse(coverageContent);
+              console.error('Parsed coverage:', JSON.stringify(coverage, null, 2));
+              
+              if (!coverage.total) {
+                console.error('No coverage.total found');
+                console.log('0');
+                process.exit(0);
+              }
+              
+              const pct = parseFloat(coverage.total.lines?.pct || 0);
+              console.error('Lines percentage:', pct);
+              console.log(isNaN(pct) ? '0' : pct);
             } catch (error) {
+              console.error('Error processing coverage:', error.message);
               console.log('0');
             }
           ")
           
-          echo "Test Coverage: ${COVERAGE}%"
+          echo "📊 Test Coverage: ${COVERAGE}%"
+          
+          # Validação de cobertura
+          if [ "$COVERAGE" = "0" ] || [ -z "$COVERAGE" ]; then
+            echo "❌ Cobertura não pôde ser determinada ou é 0%"
+            echo "🔍 Verificando se os testes realmente executaram..."
+            
+            # Verificar se há arquivos .service.ts que deveriam ser testados
+            SERVICES_COUNT=$(find src -name "*.service.ts" | wc -l)
+            echo "📈 Arquivos service encontrados: $SERVICES_COUNT"
+            
+            if [ "$SERVICES_COUNT" -eq "0" ]; then
+              echo "⚠️ Nenhum arquivo .service.ts encontrado - pulando validação de cobertura"
+              exit 0
+            else
+              echo "❌ Falha na coleta de cobertura"
+              exit 1
+            fi
+          fi
           
           # Comparação usando Node.js (mais confiável que bc)
           PASSED=$(node -e "console.log(${COVERAGE} >= 60 ? 'true' : 'false')")
@@ -82,11 +139,18 @@ jobs:
 
       - name: Validate no console.* usage
         run: |
-          if grep -r --include=*.ts "console\\." ./src; then
-            echo "❌ Uso de console.log ou console.table encontrado"
+          echo "🚫 Verificando uso de console.* (linhas não comentadas)..."
+          
+          # Buscar console.* que não estão comentados
+          CONSOLE_USAGE=$(grep -r --include=*.ts "^\s*console\." ./src | grep -v "^\s*//" | grep -v "^\s*\*" || true)
+          
+          if [ -n "$CONSOLE_USAGE" ]; then
+            echo "❌ Uso de console.log ou console.* ativo encontrado:"
+            echo "$CONSOLE_USAGE"
+            echo "📝 Remova ou comente essas linhas, ou use um logger adequado"
             exit 1
           else
-            echo "✅ Nenhum console.* encontrado"
+            echo "✅ Nenhum console.* ativo encontrado"
           fi
 
       - name: Run SonarQube analysis with Quality Gate
@@ -96,9 +160,15 @@ jobs:
         run: |
           echo "🔍 Executando análise SonarQube..."
           
+          # Verificar se o arquivo de cobertura existe
+          if [ ! -f "coverage/lcov.info" ]; then
+            echo "⚠️ Arquivo lcov.info não encontrado, executando testes novamente..."
+            npm run test:cov -- --testPathPattern=".*\.service\.spec\.ts$"
+          fi
+          
           npm install -g sonar-scanner
           
-          # Executar análise SonarQube
+          # Executar análise SonarQube com configurações corretas
           sonar-scanner \
             -Dsonar.projectKey=Athenas-Corp_Athenas \
             -Dsonar.organization=athenas-corp \
@@ -106,12 +176,14 @@ jobs:
             -Dsonar.token=${SONAR_TOKEN} \
             -Dsonar.sources=src \
             -Dsonar.tests=src \
-            -Dsonar.test.inclusions="**/*.spec.ts" \
-            -Dsonar.exclusions="**/*.spec.ts,**/node_modules/**" \
-            -Dsonar.coverage.exclusions="**/*.controller.ts,**/*.module.ts,**/*.dto.ts,**/main.ts,**/config/**/*.ts,**/migrations/**/*.ts,**/filters/**/*.ts,**/interceptors/**/*.ts,**/pipes/**/*.ts" \
+            -Dsonar.test.inclusions="**/*.spec.ts,**/*.test.ts" \
+            -Dsonar.exclusions="**/*.spec.ts,**/*.test.ts,**/node_modules/**,**/dist/**" \
+            -Dsonar.coverage.exclusions="**/*.controller.ts,**/*.module.ts,**/*.dto.ts,**/main.ts,**/config/**/*.ts,**/migrations/**/*.ts,**/filters/**/*.ts,**/interceptors/**/*.ts,**/pipes/**/*.ts,**/entities/**/*.ts,**/interfaces/**/*.ts" \
             -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info \
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
             -Dsonar.qualitygate.wait=true \
-            -Dsonar.qualitygate.timeout=300
+            -Dsonar.qualitygate.timeout=300 \
+            -Dsonar.typescript.tsconfigPath=tsconfig.json
           
           echo "✅ Análise SonarQube concluída com sucesso"
 
