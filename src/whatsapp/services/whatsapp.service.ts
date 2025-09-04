@@ -54,7 +54,6 @@ export class WhatsAppService {
     return this.sessionModel.findOne({ clientName }).exec();
   }
 
-
   async findAllSessions(): Promise<SessionResponseDto[]> {
     return this.sessionModel.find().lean().exec();
   }
@@ -69,7 +68,6 @@ export class WhatsAppService {
       status: 'pending',
       clientName,
 
-
     });
   }
 
@@ -81,7 +79,6 @@ export class WhatsAppService {
           `Sessão ${clientName} não encontrada. Crie uma nova antes de conectar.`,
         );
       }
-
 
 
       if (this.activeClients.has(clientName)) {
@@ -104,7 +101,6 @@ export class WhatsAppService {
       this.activeClients.delete(clientName);
       this.initializingClients.delete(clientName);
 
-
       throw error;
     }
 
@@ -114,7 +110,6 @@ export class WhatsAppService {
     const existClient = await this.findClient(clientName);
     if (!existClient) {
       throw new NotFoundException(`Client ${clientName} não existe`);
-
     }
 
     if (this.initializingClients.has(clientName)) {
@@ -192,7 +187,6 @@ export class WhatsAppService {
           `Sessão ${cleanOldName} não encontrada para atualização`,
         );
         return { status: 'not_found', error: 'Sessão não encontrada' };
-
 
       }
       this.logger.log(`Mensagem automática enviada para ${number}`);
