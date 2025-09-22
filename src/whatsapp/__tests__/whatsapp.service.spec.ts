@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { RedisService } from '../../redis/redis.service';
-import { EventsService } from '../../events/events.service';
+import { EventsService } from '../events.service';
 import { SocketGateway } from '../../socket/socket.gateway';
 
 import { WhatsAppService } from '../whatsapp.service';
@@ -145,11 +145,11 @@ describe('WhatsAppService', () => {
       const mockSession = createMockSession({ clientName });
 
       mockSessionModel.findOne.mockReturnValue(createMockExec(mockSession));
-      mockEventsService.registerClientEvents.mockResolvedValue(undefined);
+      mockEventsService.registerAllEvents.mockResolvedValue(undefined);
 
       await service.connectClient(clientName);
 
-      expect(mockEventsService.registerClientEvents).toHaveBeenCalled();
+      expect(mockEventsService.registerAllEvents).toHaveBeenCalled();
       expect(service['initializingClients'].has(clientName)).toBe(true);
     });
 
@@ -174,13 +174,13 @@ describe('WhatsAppService', () => {
       );
     });
 
-    it('deve limpar maps e lançar erro se registerClientEvents falhar', async (): Promise<void> => {
+    it('deve limpar maps e lançar erro se registerAllEvents falhar', async (): Promise<void> => {
       const clientName = 'test-client';
       const mockSession = createMockSession({ clientName });
       const error = new Error('Falha teste');
 
       mockSessionModel.findOne.mockReturnValue(createMockExec(mockSession));
-      mockEventsService.registerClientEvents.mockRejectedValue(error);
+      mockEventsService.registerAllEvents.mockRejectedValue(error);
 
       await expect(service.connectClient(clientName)).rejects.toThrow(error);
       expect(service['activeClients'].has(clientName)).toBe(false);

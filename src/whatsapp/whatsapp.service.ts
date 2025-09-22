@@ -11,7 +11,7 @@ import { SocketGateway } from '../socket/socket.gateway';
 import { SessionResponseDto } from './dto/session-response.dto';
 import { IWhatsAppSession } from './interfaces/whatsapp.interface';
 import { RedisService } from '../redis/redis.service';
-import { EventsService } from '../events/events.service';
+import { EventsService } from './events.service';
 
 @Injectable()
 export class WhatsAppService {
@@ -90,7 +90,7 @@ export class WhatsAppService {
       this.initializingClients.set(clientName, client);
 
       // 🔑 Registra todos os eventos via EventsService
-      await this.eventsService.registerClientEvents(client, clientName);
+      await this.eventsService.registerAllEvents(client, clientName);
 
       this.logger.log(`Cliente ${clientName} em processo de inicialização`);
     } catch (error) {

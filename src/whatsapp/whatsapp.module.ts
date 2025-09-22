@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { SocketModule } from 'src/socket/socket.module';
 import { RedisModule } from 'src/redis/redis.module';
-import { EventsModule } from 'src/events/events.module';
 import {
   WhatsAppSession,
   WhatsAppSessionSchema,
@@ -10,6 +9,9 @@ import {
 import { WhatsAppController } from './whatsapp.controller';
 import { WhatsAppGateway } from './whatsApp.gateway';
 import { WhatsAppService } from './whatsapp.service';
+import { EventsService } from './events.service';
+import { EmiteQrEventUseCase } from './useCases/emit-qr-event.usecase';
+import { OnReadyUseCase } from './useCases/onready.usecase';
 
 @Module({
   imports: [
@@ -18,10 +20,15 @@ import { WhatsAppService } from './whatsapp.service';
     ]),
     SocketModule,
     RedisModule,
-    EventsModule,
   ],
   controllers: [WhatsAppController],
-  providers: [WhatsAppService, WhatsAppGateway],
+  providers: [
+    WhatsAppService,
+    WhatsAppGateway,
+    EventsService,
+    EmiteQrEventUseCase,
+    OnReadyUseCase,
+  ],
   exports: [WhatsAppService],
 })
 export class WhatsAppModule {}

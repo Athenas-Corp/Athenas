@@ -91,11 +91,24 @@ jobs:
             exit 1
           fi
 
+      # ✅ UPLOAD DOS ARQUIVOS DE COVERAGE COMO ARTIFACT
+      - name: Upload Coverage Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage/
+            !coverage/tmp/
+          retention-days: 1
+
   sonar:
     runs-on: ubuntu-latest
     needs: test-and-coverage
     steps:
       - uses: actions/checkout@v4
+        with:
+          # ✅ FETCH COMPLETO PARA EVITAR SHALLOW CLONE
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -113,6 +126,55 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # ✅ DOWNLOAD DOS ARQUIVOS DE COVERAGE NA RAIZ
+      - name: Download Coverage Reports
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-reports
+          path: ./
+
+      # ✅ VERIFICAR E ORGANIZAR OS ARQUIVOS BAIXADOS
+      - name: Verify and Organize Coverage Files
+        run: |
+          echo "📋 Checking downloaded files..."
+          ls -la
+          echo ""
+
+          # ✅ Verificar se lcov.info existe na raiz (onde foi baixado)
+          if [ -f "lcov.info" ]; then
+            echo "✅ LCOV file found at root - organizing files..."
+            
+            # Criar pasta coverage se não existir
+            mkdir -p coverage
+            
+            # Mover arquivos para a pasta coverage
+            if [ -f "lcov.info" ]; then
+              mv lcov.info coverage/
+              echo "✅ Moved lcov.info to coverage/"
+            fi
+            
+            if [ -f "coverage-summary.json" ]; then
+              mv coverage-summary.json coverage/
+              echo "✅ Moved coverage-summary.json to coverage/"
+            fi
+            
+            if [ -d "lcov-report" ]; then
+              mv lcov-report coverage/
+              echo "✅ Moved lcov-report/ to coverage/"
+            fi
+            
+            echo ""
+            echo "📋 Final coverage directory structure:"
+            ls -la coverage/
+            echo ""
+            echo "📋 First 5 lines of LCOV file:"
+            head -5 coverage/lcov.info
+            
+          else
+            echo "❌ LCOV file not found"
+            exit 1
+          fi
+
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v3
         with:
@@ -123,6 +185,7 @@ jobs:
             -Dsonar.tests=src
             -Dsonar.test.inclusions="**/*.spec.ts"
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+            -Dsonar.coverage.exclusions="**/*.spec.ts,**/*.mock.ts,**/__tests__/**,**/__mocks__/**"
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
