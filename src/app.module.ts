@@ -4,8 +4,6 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AgendamentosModule } from './agendamentos/agendamentos.module';
 import { SocketModule } from './socket/socket.module';
 import { RedisModule } from './redis/redis.module';
-import { EventsModule } from './events/events.module';
-import { HandleWhatsAppClientModule } from './handle-whata-app-client/handle-whata-app-client.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
 
 @Module({
@@ -27,8 +25,6 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module';
     AgendamentosModule,
     SocketModule,
     RedisModule,
-    EventsModule,
-    HandleWhatsAppClientModule,
   ],
 })
 export class AppModule {}
