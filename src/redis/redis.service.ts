@@ -151,4 +151,24 @@ export class RedisService {
       this.logger.error('Erro ao encerrar conexão Redis:', error);
     }
   }
+
+  async getQrAttempts(clientName: string): Promise<number> {
+    const key = `whatsapp:qr_attempts:${clientName}`;
+    const attempts = await this.redis.get(key);
+    return parseInt(attempts || '0', 10);
+  }
+
+  async incrementQrAttempts(
+    clientName: string,
+    ttlSeconds: number,
+  ): Promise<void> {
+    const key = `whatsapp:qr_attempts:${clientName}`;
+    await this.redis.incr(key);
+    await this.redis.expire(key, ttlSeconds);
+  }
+
+  async resetQrAttempts(clientName: string): Promise<void> {
+    const key = `whatsapp:qr_attempts:${clientName}`;
+    await this.redis.del(key);
+  }
 }
