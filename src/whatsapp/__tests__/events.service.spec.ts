@@ -107,25 +107,15 @@ describe('EventsService', () => {
     await mockClient.qrCallback?.('FAKE_QR_2');
     await mockClient.qrCallback?.('FAKE_QR_3');
 
+    const spyQr = jest.spyOn(emiteQrEventUseCase, 'execute');
     // Verifica se o useCase foi chamado para cada QR
-    expect(emiteQrEventUseCase.execute).toHaveBeenNthCalledWith(
-      1,
-      'FAKE_QR_1',
-      'TestClient',
-    );
-    expect(emiteQrEventUseCase.execute).toHaveBeenNthCalledWith(
-      2,
-      'FAKE_QR_2',
-      'TestClient',
-    );
-    expect(emiteQrEventUseCase.execute).toHaveBeenNthCalledWith(
-      3,
-      'FAKE_QR_3',
-      'TestClient',
-    );
+    expect(spyQr).toHaveBeenNthCalledWith(1, 'FAKE_QR_1', 'TestClient');
+    expect(spyQr).toHaveBeenNthCalledWith(2, 'FAKE_QR_2', 'TestClient');
+    expect(spyQr).toHaveBeenNthCalledWith(3, 'FAKE_QR_3', 'TestClient');
 
     // Verifica se o redis e destroy foram chamados após o terceiro QR
-    expect(redisService.deleteSession).toHaveBeenCalledWith('TestClient');
+    const deleteSessionSpy = jest.spyOn(redisService, 'deleteSession');
+    expect(deleteSessionSpy).toHaveBeenCalledWith('TestClient');
     expect(mockClient.destroy).toHaveBeenCalled();
   });
 
@@ -133,11 +123,13 @@ describe('EventsService', () => {
     // Simula que o limite não é atingido
     emiteQrEventUseCase.execute.mockResolvedValue(false);
 
+    const spyRedis = jest.spyOn(redisService, 'deleteSession');
+
     await service.registerAllEvents(mockClient as Client, 'TestClient');
 
     await mockClient.qrCallback?.('FAKE_QR_1');
 
-    expect(redisService.deleteSession).not.toHaveBeenCalled();
+    expect(spyRedis).not.toHaveBeenCalled();
     expect(mockClient.destroy).not.toHaveBeenCalled();
   });
 
