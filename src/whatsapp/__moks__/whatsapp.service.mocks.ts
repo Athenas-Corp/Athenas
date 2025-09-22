@@ -38,6 +38,7 @@ export const mockRedisService = {
 };
 
 export const mockEventsService = {
+  registerAllEvents: jest.fn<Promise<void>, [Client, string]>(),
   registerClientEvents: jest.fn<Promise<void>, [Client, string]>(),
 };
 
