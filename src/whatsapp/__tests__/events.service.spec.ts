@@ -119,6 +119,8 @@ describe('EventsService', () => {
     expect(mockClient.destroy).toHaveBeenCalled();
   });
 
+  //ajustei aqui
+
   it('não deve destruir o client quando limite de QR não for atingido', async () => {
     // Simula que o limite não é atingido
     emiteQrEventUseCase.execute.mockResolvedValue(false);
