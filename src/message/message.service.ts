@@ -12,13 +12,8 @@ export class MessageService {
     @InjectModel(Message.name)
     private readonly messageModel: Model<MessageDocument>,
   ) {}
-  async createMessage(data: {
-    from: string;
-    to: string;
-    content: string;
-    status: string;
-    messageId?: string;
-  }): Promise<Message> {
+
+  async createMessage(data: Partial<Message>): Promise<Message> {
     const createdMessage = new this.messageModel(data);
     return createdMessage.save();
   }
