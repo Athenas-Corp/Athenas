@@ -89,8 +89,17 @@ export class WhatsAppService {
 
       this.initializingClients.set(clientName, client);
 
-      // 🔑 Registra todos os eventos via EventsService
-      await this.eventsService.registerAllEvents(client, clientName);
+      // 🔹 Registrar todos os eventos necessários ANTES de inicializar
+      this.eventsService.onQr(client, clientName);
+      this.eventsService.onReady(client, clientName);
+      this.eventsService.onAuthenticated(client, clientName);
+      this.eventsService.onDisconnected(client, clientName);
+      this.eventsService.onAuthFailure(client, clientName);
+      this.eventsService.onChangeState(client, clientName);
+      this.eventsService.onMessageCreate(client, clientName);
+
+      // 🔹 Agora sim, inicializar o client
+      await client.initialize();
 
       this.logger.log(`Cliente ${clientName} em processo de inicialização`);
     } catch (error) {
@@ -109,20 +118,44 @@ export class WhatsAppService {
       throw new NotFoundException(`Client ${clientName} não existe`);
     }
 
+    // Função auxiliar para destruir com segurança
+    const safeDestroy = async (
+      client: Client | undefined,
+      source: string,
+    ): Promise<void> => {
+      try {
+        if (client && client.pupPage) {
+          await client.destroy();
+          this.logger.log(
+            `Client ${clientName} destruído a partir de ${source}`,
+          );
+        } else {
+          this.logger.warn(
+            `Client ${clientName} já estava destruído ou não inicializou (${source})`,
+          );
+        }
+      } catch (err: unknown) {
+        if (err instanceof Error) {
+          this.logger.error(
+            `Erro ao destruir client ${clientName} (${source}): ${err.message}`,
+          );
+        } else {
+          this.logger.error(
+            `Erro desconhecido ao destruir client ${clientName} (${source})`,
+          );
+        }
+      }
+    };
+
     if (this.initializingClients.has(clientName)) {
       const client = this.initializingClients.get(clientName);
-      if (!client) {
-        throw new NotFoundException('Client não existe');
-      }
-      await client.destroy();
+      await safeDestroy(client, 'initializingClients');
       this.initializingClients.delete(clientName);
     }
 
     if (this.activeClients.has(clientName)) {
       const client = this.activeClients.get(clientName);
-      if (client) {
-        await client.destroy();
-      }
+      await safeDestroy(client, 'activeClients');
       this.activeClients.delete(clientName);
     }
 
@@ -195,58 +228,3 @@ export class WhatsAppService {
     }
   }
 }
-
-//Aqui está em caso de perder tudo e refatorar:
-
-// async ClientReady() {
-//   const client = new Client({
-//     authStrategy: new LocalAuth({
-//       clientId: 'client-one',
-//       dataPath: './sessions/client-one', // garante pasta limpa para testes
-//     }),
-//     puppeteer: {
-//       headless: true,
-//       args: [
-//         '--no-sandbox',
-//         '--disable-setuid-sandbox',
-//         '--disable-dev-shm-usage',
-//         '--disable-accelerated-2d-canvas',
-//         '--no-first-run',
-//         '--no-zygote',
-//         '--single-process',
-//         '--disable-gpu',
-//       ],
-//     },
-//   });
-
-//   console.log('Bateu no ClientReady da service!');
-
-//   // Evento QR
-//   client.on('qr', (qr) => {
-//     console.log('QR code recebido, escaneie com seu WhatsApp!');
-//     qrcode.generate(qr, { small: true });
-//   });
-
-//   // Evento de autenticação
-//   client.on('authenticated', () => {
-//     console.log('✅ Cliente autenticado com sucesso!');
-//   });
-
-//   // Falha na autenticação
-//   client.on('auth_failure', (msg) => {
-//     console.error('⚠️ Falha na autenticação:', msg);
-//   });
-
-//   // Evento ready
-//   client.on('ready', () => {
-//     console.log('✅ Client is ready!');
-//   });
-
-//   client.once('ready', () => {
-//     console.log('✅ Client is finally ready!');
-//   });
-
-//   // Inicializa o client
-//   await client.initialize();
-//   console.log('client.initialize() retornou');
-// }

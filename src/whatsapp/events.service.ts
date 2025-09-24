@@ -3,6 +3,7 @@ import { Client, Message } from 'whatsapp-web.js';
 import { EmiteQrEventUseCase } from './useCases/emit-qr-event.usecase';
 import { OnReadyUseCase } from './useCases/onready.usecase';
 import { RedisService } from '../redis/redis.service';
+import { MessageService } from '../message/message.service';
 
 @Injectable()
 export class EventsService {
@@ -12,20 +13,8 @@ export class EventsService {
     private readonly emiteQrEventUseCase: EmiteQrEventUseCase,
     private readonly onReadyUseCase: OnReadyUseCase,
     private readonly redisService: RedisService,
+    private readonly messageService: MessageService,
   ) {}
-
-  // 🔹 Registra todos os eventos de um cliente
-  async registerAllEvents(client: Client, clientName: string): Promise<void> {
-    this.onAuthenticated(client, clientName);
-    this.onReady(client, clientName);
-    this.onMessageCreate(client, clientName);
-    this.onQr(client, clientName);
-    this.onDisconnected(client, clientName);
-    this.onAuthFailure(client, clientName);
-    this.onChangeState(client, clientName);
-
-    await client.initialize();
-  }
 
   // 🔹 Eventos separados
   onAuthenticated(client: Client, clientName: string): void {
@@ -48,6 +37,14 @@ export class EventsService {
       this.logger.log(
         `Mensagem recebida do cliente ${clientName} | De: ${message.from} | Conteúdo: ${message.body}`,
       );
+
+      void this.messageService.createMessage({
+        from: message.from,
+        to: message.to,
+        content: message.body,
+        status: 'received',
+        messageId: message.id._serialized,
+      });
     });
   }
 
@@ -82,7 +79,9 @@ export class EventsService {
 
   onAuthFailure(client: Client, clientName: string): void {
     client.on('auth_failure', (msg: string) => {
-      this.logger.error(`Falha na autenticação do ${clientName}: ${msg}`);
+      this.logger.error(
+        `Falha na autenticação do ${clientName}: ${msg || 'Authentication failed'}`,
+      );
     });
   }
 
