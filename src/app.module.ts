@@ -5,6 +5,7 @@ import { AgendamentosModule } from './agendamentos/agendamentos.module';
 import { SocketModule } from './socket/socket.module';
 import { RedisModule } from './redis/redis.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
+import { MessageModule } from './message/message.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module';
     AgendamentosModule,
     SocketModule,
     RedisModule,
+    MessageModule,
   ],
 })
 export class AppModule {}

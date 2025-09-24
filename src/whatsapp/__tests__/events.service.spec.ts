@@ -3,18 +3,28 @@ import { EventsService } from '../events.service';
 import { EmiteQrEventUseCase } from '../useCases/emit-qr-event.usecase';
 import { OnReadyUseCase } from '../useCases/onready.usecase';
 import { RedisService } from '../../redis/redis.service';
+import { MessageService } from '../../message/message.service';
 import { Client, Message } from 'whatsapp-web.js';
 
-// Tipos para callbacks do mock
 type ReadyCallback = () => Promise<void>;
 type QrCallback = (qr: string) => Promise<void>;
 type MessageCallback = (message: Message) => void;
+type AuthenticatedCallback = () => void;
+type DisconnectedCallback = (reason: string) => void;
+type AuthFailureCallback = (msg: string) => void;
+type ChangeStateCallback = (state: string) => void;
 
-// Mock do Client com callbacks armazenados
 interface MockClientType extends Partial<Client> {
   readyCallback?: ReadyCallback;
   qrCallback?: QrCallback;
   messageCallback?: MessageCallback;
+  authenticatedCallback?: AuthenticatedCallback;
+  disconnectedCallback?: DisconnectedCallback;
+  authFailureCallback?: AuthFailureCallback;
+  changeStateCallback?: ChangeStateCallback;
+  initialize?: jest.Mock;
+  destroy?: jest.Mock;
+  on?: jest.Mock;
 }
 
 describe('EventsService', () => {
@@ -22,11 +32,11 @@ describe('EventsService', () => {
   let emiteQrEventUseCase: jest.Mocked<EmiteQrEventUseCase>;
   let onReadyUseCase: jest.Mocked<OnReadyUseCase>;
   let redisService: jest.Mocked<RedisService>;
-
+  let messageService: jest.Mocked<MessageService>;
   let mockClient: MockClientType;
 
   beforeEach(async () => {
-    // Cria um novo mockClient antes de cada teste
+    // Cria mock do client
     mockClient = {
       initialize: jest.fn(),
       destroy: jest.fn().mockResolvedValue(undefined),
@@ -39,6 +49,14 @@ describe('EventsService', () => {
         if (event === 'qr') this.qrCallback = callback as QrCallback;
         if (event === 'message_create')
           this.messageCallback = callback as MessageCallback;
+        if (event === 'authenticated')
+          this.authenticatedCallback = callback as AuthenticatedCallback;
+        if (event === 'disconnected')
+          this.disconnectedCallback = callback as DisconnectedCallback;
+        if (event === 'auth_failure')
+          this.authFailureCallback = callback as AuthFailureCallback;
+        if (event === 'change_state')
+          this.changeStateCallback = callback as ChangeStateCallback;
         return this as Client;
       }),
     };
@@ -48,21 +66,19 @@ describe('EventsService', () => {
         EventsService,
         {
           provide: EmiteQrEventUseCase,
-          useValue: {
-            execute: jest.fn().mockResolvedValue(false), // default: limite não atingido
-          },
+          useValue: { execute: jest.fn().mockResolvedValue(false) },
         },
         {
           provide: OnReadyUseCase,
-          useValue: {
-            execute: jest.fn(), // arrow function evita `this`
-          },
+          useValue: { execute: jest.fn() },
         },
         {
           provide: RedisService,
-          useValue: {
-            deleteSession: jest.fn(), // arrow function evita `this`
-          },
+          useValue: { deleteSession: jest.fn() },
+        },
+        {
+          provide: MessageService,
+          useValue: { createMessage: jest.fn() },
         },
       ],
     }).compile();
@@ -71,81 +87,148 @@ describe('EventsService', () => {
     emiteQrEventUseCase = module.get(EmiteQrEventUseCase);
     onReadyUseCase = module.get(OnReadyUseCase);
     redisService = module.get(RedisService);
+    messageService = module.get(MessageService);
 
     jest.clearAllMocks();
   });
 
-  it('deve registrar eventos e inicializar o client', async () => {
-    await service.registerAllEvents(mockClient as Client, 'TestClient');
+  describe('onReady', () => {
+    it('deve configurar listener do evento ready e executar OnReadyUseCase', async () => {
+      const spyReady = jest.spyOn(onReadyUseCase, 'execute');
 
-    expect(mockClient.initialize).toHaveBeenCalled();
-    expect(mockClient.on).toHaveBeenCalledWith('ready', expect.any(Function));
-    expect(mockClient.on).toHaveBeenCalledWith('qr', expect.any(Function));
-    expect(mockClient.on).toHaveBeenCalledWith(
-      'message_create',
-      expect.any(Function),
-    );
+      service.onReady(mockClient as Client, 'TestClient');
+
+      expect(mockClient.on).toHaveBeenCalledWith('ready', expect.any(Function));
+
+      // Simula o disparo do evento
+      await mockClient.readyCallback?.();
+
+      expect(spyReady).toHaveBeenCalledWith(mockClient as Client, 'TestClient');
+    });
   });
 
-  it('deve executar OnReadyUseCase quando o evento ready for disparado', async () => {
-    await service.registerAllEvents(mockClient as Client, 'TestClient');
+  describe('onQr', () => {
+    it('deve destruir o client quando limite de QR for atingido', async () => {
+      emiteQrEventUseCase.execute.mockResolvedValue(true);
+      const spyQr = jest.spyOn(emiteQrEventUseCase, 'execute');
+      const spyDelete = jest.spyOn(redisService, 'deleteSession');
+      const spyDestroy = jest.spyOn(mockClient, 'destroy');
 
-    await mockClient.readyCallback!();
+      service.onQr(mockClient as Client, 'TestClient');
 
-    await ((): Promise<void> =>
-      onReadyUseCase.execute(mockClient as Client, 'TestClient'))();
+      expect(mockClient.on).toHaveBeenCalledWith('qr', expect.any(Function));
+
+      // Simula o disparo do evento QR e aguarda a execução assíncrona
+      await mockClient.qrCallback?.('FAKE_QR_CODE');
+
+      // Aguarda um tick para garantir que as operações assíncronas sejam executadas
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(spyQr).toHaveBeenCalledWith('FAKE_QR_CODE', 'TestClient');
+      expect(spyDelete).toHaveBeenCalledWith('TestClient');
+      expect(spyDestroy).toHaveBeenCalled();
+    });
+
+    it('não deve destruir o client quando limite de QR não for atingido', async () => {
+      emiteQrEventUseCase.execute.mockResolvedValue(false);
+      const spyDelete = jest.spyOn(redisService, 'deleteSession');
+      const spyDestroy = jest.spyOn(mockClient, 'destroy');
+
+      service.onQr(mockClient as Client, 'TestClient');
+
+      await mockClient.qrCallback?.('FAKE_QR_CODE');
+
+      expect(spyDelete).not.toHaveBeenCalled();
+      expect(spyDestroy).not.toHaveBeenCalled();
+    });
   });
 
-  it('deve destruir o client quando limite de QR for atingido', async () => {
-    // Simula que o useCase retorna true para indicar limite atingido
-    emiteQrEventUseCase.execute.mockResolvedValue(true);
+  describe('onMessageCreate', () => {
+    it('deve configurar listener do evento message_create e salvar mensagem', () => {
+      const mockMessage: Message = {
+        from: '5511999999999@c.us',
+        to: '5511888888888@c.us',
+        body: 'Olá mundo',
+        id: { _serialized: 'msg_123456' },
+      } as Message;
 
-    await service.registerAllEvents(mockClient as Client, 'TestClient');
+      const spyCreateMessage = jest.spyOn(messageService, 'createMessage');
 
-    // Dispara 3 QRs para atingir o limite
-    await mockClient.qrCallback?.('FAKE_QR_1');
-    await mockClient.qrCallback?.('FAKE_QR_2');
-    await mockClient.qrCallback?.('FAKE_QR_3');
+      service.onMessageCreate(mockClient as Client, 'TestClient');
 
-    const spyQr = jest.spyOn(emiteQrEventUseCase, 'execute');
-    // Verifica se o useCase foi chamado para cada QR
-    expect(spyQr).toHaveBeenNthCalledWith(1, 'FAKE_QR_1', 'TestClient');
-    expect(spyQr).toHaveBeenNthCalledWith(2, 'FAKE_QR_2', 'TestClient');
-    expect(spyQr).toHaveBeenNthCalledWith(3, 'FAKE_QR_3', 'TestClient');
+      expect(mockClient.on).toHaveBeenCalledWith(
+        'message_create',
+        expect.any(Function),
+      );
 
-    // Verifica se o redis e destroy foram chamados após o terceiro QR
-    const deleteSessionSpy = jest.spyOn(redisService, 'deleteSession');
-    expect(deleteSessionSpy).toHaveBeenCalledWith('TestClient');
-    expect(mockClient.destroy).toHaveBeenCalled();
+      // Simula o disparo do evento
+      mockClient.messageCallback?.(mockMessage);
+
+      expect(spyCreateMessage).toHaveBeenCalledWith({
+        from: '5511999999999@c.us',
+        to: '5511888888888@c.us',
+        content: 'Olá mundo',
+        status: 'received',
+        messageId: 'msg_123456',
+      });
+    });
   });
 
-  //ajustei aqui
+  describe('onAuthenticated', () => {
+    it('deve configurar listener do evento authenticated', () => {
+      service.onAuthenticated(mockClient as Client, 'TestClient');
 
-  it('não deve destruir o client quando limite de QR não for atingido', async () => {
-    // Simula que o limite não é atingido
-    emiteQrEventUseCase.execute.mockResolvedValue(false);
+      expect(mockClient.on).toHaveBeenCalledWith(
+        'authenticated',
+        expect.any(Function),
+      );
 
-    const spyRedis = jest.spyOn(redisService, 'deleteSession');
+      // Simula o disparo do evento
+      mockClient.authenticatedCallback?.();
 
-    await service.registerAllEvents(mockClient as Client, 'TestClient');
-
-    await mockClient.qrCallback?.('FAKE_QR_1');
-
-    expect(spyRedis).not.toHaveBeenCalled();
-    expect(mockClient.destroy).not.toHaveBeenCalled();
+      // Não há comportamento específico além do log, então apenas verificamos se o listener foi configurado
+    });
   });
 
-  it('deve logar mensagem recebida no evento message_create', async () => {
-    const message: Message = {
-      from: '123',
-      body: 'Olá mundo',
-    } as Message;
+  describe('onDisconnected', () => {
+    it('deve configurar listener do evento disconnected', () => {
+      service.onDisconnected(mockClient as Client, 'TestClient');
 
-    await service.registerAllEvents(mockClient as Client, 'TestClient');
+      expect(mockClient.on).toHaveBeenCalledWith(
+        'disconnected',
+        expect.any(Function),
+      );
 
-    // Dispara o evento
-    mockClient.messageCallback?.(message);
+      // Simula o disparo do evento
+      mockClient.disconnectedCallback?.('NAVIGATION');
+    });
+  });
 
-    expect(mockClient.messageCallback).toBeDefined();
+  describe('onAuthFailure', () => {
+    it('deve configurar listener do evento auth_failure', () => {
+      service.onAuthFailure(mockClient as Client, 'TestClient');
+
+      expect(mockClient.on).toHaveBeenCalledWith(
+        'auth_failure',
+        expect.any(Function),
+      );
+
+      // Simula o disparo do evento
+      mockClient.authFailureCallback?.('Authentication failed');
+    });
+  });
+
+  describe('onChangeState', () => {
+    it('deve configurar listener do evento change_state', () => {
+      service.onChangeState(mockClient as Client, 'TestClient');
+
+      expect(mockClient.on).toHaveBeenCalledWith(
+        'change_state',
+        expect.any(Function),
+      );
+
+      // Simula o disparo do evento
+      mockClient.changeStateCallback?.('CONNECTED');
+    });
   });
 });

@@ -2,6 +2,7 @@ import { Client } from 'whatsapp-web.js';
 import { DeleteResult } from 'mongoose';
 import { IWhatsAppSession } from '../interfaces/whatsapp.interface';
 import { SessionResponseDto } from '../dto/session-response.dto';
+import { EventsService } from '../events.service';
 
 export interface MockExec<T> {
   exec: jest.Mock<Promise<T>, []>;
@@ -37,15 +38,22 @@ export const mockRedisService = {
   isSessionActive: jest.fn<Promise<boolean>, [string]>(),
 };
 
-export const mockEventsService = {
-  registerAllEvents: jest.fn<Promise<void>, [Client, string]>(),
-  registerClientEvents: jest.fn<Promise<void>, [Client, string]>(),
+export const mockEventsService: Partial<EventsService> = {
+  onQr: jest.fn(),
+  onReady: jest.fn(),
+  onAuthenticated: jest.fn(),
+  onDisconnected: jest.fn(),
+  onAuthFailure: jest.fn(),
+  onChangeState: jest.fn(),
+  onMessageCreate: jest.fn(),
 };
 
 export const mockSocketGateway = {};
 
 export const mockClient: Partial<Client> = {
   destroy: jest.fn().mockResolvedValue(undefined),
+  initialize: jest.fn().mockResolvedValue(undefined), // 🔹 adiciona isso
+  on: jest.fn(), // se algum evento do client for registrado
 };
 
 export const mockWhatsAppWebJs = {

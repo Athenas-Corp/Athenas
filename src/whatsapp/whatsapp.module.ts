@@ -12,6 +12,7 @@ import { WhatsAppService } from './whatsapp.service';
 import { EventsService } from './events.service';
 import { EmiteQrEventUseCase } from './useCases/emit-qr-event.usecase';
 import { OnReadyUseCase } from './useCases/onready.usecase';
+import { MessageModule } from 'src/message/message.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { OnReadyUseCase } from './useCases/onready.usecase';
     ]),
     SocketModule,
     RedisModule,
+    MessageModule,
   ],
   controllers: [WhatsAppController],
   providers: [
