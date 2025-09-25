@@ -7,8 +7,8 @@ import { AgendamentosController } from './agendamentos.controller';
 import {
   Agendamento,
   AgendamentoSchema,
-} from 'src/models/schemas/AgendamentosSchema/agendamentos.schema';
-import { WhatsAppModule } from 'src/whatsapp/whatsapp.module';
+} from '../models/schemas/AgendamentosSchema/agendamentos.schema';
+import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 
 @Module({
   imports: [

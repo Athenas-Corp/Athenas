@@ -4,13 +4,11 @@ import { MessageService } from './message.service';
 import {
   Message,
   MessageSchema,
-} from 'src/models/schemas/messageSchema/message.schema';
+} from '../models/schemas/messageSchema/message.schema';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([
-      { name: Message.name, schema: MessageSchema }, // 👈 aqui está o ajuste
-    ]),
+    MongooseModule.forFeature([{ name: Message.name, schema: MessageSchema }]),
   ],
   providers: [MessageService],
   exports: [MessageService],
