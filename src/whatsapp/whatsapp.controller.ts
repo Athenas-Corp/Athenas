@@ -45,9 +45,4 @@ export class WhatsAppController {
   ): Promise<{ status: string; clientName?: string }> {
     return this.whatsappService.updateClientName(oldClientName, newclientName);
   }
-
-  // @Get('clients/:clientName')
-  // async startSession(@Param('teste1') clientName: string): Promise<void> {
-  //   return this.whatsappService.ClientReady();
-  // }
 }
