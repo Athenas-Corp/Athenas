@@ -1,17 +1,19 @@
 import {
   ConflictException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Client, LocalAuth } from 'whatsapp-web.js';
 import { DeleteResult, Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
-import { SocketGateway } from '../socket/socket.gateway';
 import { SessionResponseDto } from './dto/session-response.dto';
 import { IWhatsAppSession } from './interfaces/whatsapp.interface';
 import { RedisService } from '../redis/redis.service';
 import { EventsService } from './events.service';
+import { SocketGateway } from '../socket/socket.gateway';
+import { IClientMessage } from './types/clientMessage.type';
 
 @Injectable()
 export class WhatsAppService {
@@ -23,9 +25,9 @@ export class WhatsAppService {
   constructor(
     @InjectModel('WhatsAppSession')
     private readonly sessionModel: Model<IWhatsAppSession>,
-    private readonly socketGateway: SocketGateway,
     private readonly redisService: RedisService,
     private readonly eventsService: EventsService,
+    private readonly socketGateway: SocketGateway,
   ) {}
 
   private buildClient(clientName: string): Client {
@@ -48,6 +50,41 @@ export class WhatsAppService {
         ],
       },
     });
+  }
+
+  async sendMessage(
+    clientName: string,
+    number: string,
+    message: string,
+  ): Promise<IClientMessage> {
+    const client = this.activeClients.get(clientName);
+
+    if (!client) {
+      throw new NotFoundException(`Cliente ${clientName} não está conectado`);
+    }
+
+    try {
+      await client.sendMessage(number, message);
+
+      const newMessage: IClientMessage = {
+        body: message,
+        from: client.info?.me?.user || clientName,
+        to: number,
+        isMe: true,
+        clientNumber: client.info?.me?.user || clientName,
+        clientName,
+      };
+
+      this.socketGateway.emit('newMessage', newMessage);
+      return newMessage;
+    } catch (error: unknown) {
+      let message = 'Erro desconhecido';
+      if (error instanceof Error) {
+        message = error.message;
+      }
+
+      throw new InternalServerErrorException(message);
+    }
   }
 
   async findClient(clientName: string): Promise<IWhatsAppSession | null> {

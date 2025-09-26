@@ -10,6 +10,8 @@ import {
 import { WhatsAppService } from './whatsapp.service';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { SessionResponseDto } from './dto/session-response.dto';
+import { SendMessageDto } from './dto/send-message.dto';
+import { IClientMessage } from './types/clientMessage.type';
 
 @Controller('whatsapp')
 export class WhatsAppController {
@@ -44,5 +46,14 @@ export class WhatsAppController {
     @Body('newclientName') newclientName: string,
   ): Promise<{ status: string; clientName?: string }> {
     return this.whatsappService.updateClientName(oldClientName, newclientName);
+  }
+
+  @Post('send-message')
+  async sendMessage(
+    @Body() sendMessageDto: SendMessageDto,
+  ): Promise<IClientMessage> {
+    const { clientName, number, message } = sendMessageDto;
+
+    return this.whatsappService.sendMessage(clientName, number, message);
   }
 }

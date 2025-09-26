@@ -4,16 +4,19 @@ import { EmiteQrEventUseCase } from './useCases/emit-qr-event.usecase';
 import { OnReadyUseCase } from './useCases/onready.usecase';
 import { RedisService } from '../redis/redis.service';
 import { MessageService } from '../message/message.service';
+import { SocketGateway } from '../socket/socket.gateway';
 
 @Injectable()
 export class EventsService {
   private readonly logger = new Logger(EventsService.name);
+  private activeClients: Map<string, Client> = new Map();
 
   constructor(
     private readonly emiteQrEventUseCase: EmiteQrEventUseCase,
     private readonly onReadyUseCase: OnReadyUseCase,
     private readonly redisService: RedisService,
     private readonly messageService: MessageService,
+    private readonly socketGateway: SocketGateway,
   ) {}
 
   // 🔹 Eventos separados
@@ -26,25 +29,54 @@ export class EventsService {
   onReady(client: Client, clientName: string): void {
     client.on('ready', () => {
       void (async (): Promise<void> => {
-        await this.onReadyUseCase.execute(client, clientName);
-        this.logger.log(`Evento 'ready' recebido para ${clientName}`);
+        try {
+          await this.onReadyUseCase.execute(client, clientName);
+
+          this.activeClients.set(clientName, client);
+
+          // Salva ou atualiza a sessão no Redis
+          await this.redisService.saveSession(clientName, {
+            clientName,
+            status: 'connected',
+            lastActivity: new Date().toISOString(),
+            connectionAttempts: 0,
+          });
+
+          this.socketGateway.emit('client-ready', { clientName });
+
+          this.logger.log(
+            `Evento 'ready' recebido para ${clientName}, client registrado e sessão salva no Redis`,
+          );
+        } catch (error) {
+          this.logger.error(
+            `Erro ao processar 'ready' para ${clientName}`,
+            error,
+          );
+        }
       })();
     });
   }
 
   onMessageCreate(client: Client, clientName: string): void {
     client.on('message_create', (message: Message) => {
-      this.logger.log(
-        `Mensagem recebida do cliente ${clientName} | De: ${message.from} | Conteúdo: ${message.body}`,
-      );
+      void (async (): Promise<void> => {
+        this.logger.log(
+          `Mensagem recebida do cliente ${clientName} | De: ${message.from} | Conteúdo: ${message.body}`,
+        );
 
-      void this.messageService.createMessage({
-        from: message.from,
-        to: message.to,
-        content: message.body,
-        status: 'received',
-        messageId: message.id._serialized,
-      });
+        const newMessage = {
+          from: message.from,
+          to: message.to,
+          content: message.body,
+          status: 'received',
+          messageId: message.id._serialized,
+        };
+
+        await this.messageService.createMessage(newMessage);
+
+        //  Emitir no canal "newMessage"
+        this.socketGateway.emit('newMessage', newMessage);
+      })();
     });
   }
 

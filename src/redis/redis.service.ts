@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import Redis from 'ioredis';
 
-interface WhatsAppClientState {
+export interface WhatsAppClientState {
   clientName: string;
   status:
     | 'initializing'

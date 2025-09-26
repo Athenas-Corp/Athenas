@@ -4,6 +4,7 @@ import { EmiteQrEventUseCase } from '../useCases/emit-qr-event.usecase';
 import { OnReadyUseCase } from '../useCases/onready.usecase';
 import { RedisService } from '../../redis/redis.service';
 import { MessageService } from '../../message/message.service';
+import { SocketGateway } from '../../socket/socket.gateway';
 import { Client, Message } from 'whatsapp-web.js';
 
 type ReadyCallback = () => Promise<void>;
@@ -33,6 +34,7 @@ describe('EventsService', () => {
   let onReadyUseCase: jest.Mocked<OnReadyUseCase>;
   let redisService: jest.Mocked<RedisService>;
   let messageService: jest.Mocked<MessageService>;
+  let socketGateway: jest.Mocked<SocketGateway>;
   let mockClient: MockClientType;
 
   beforeEach(async () => {
@@ -70,15 +72,22 @@ describe('EventsService', () => {
         },
         {
           provide: OnReadyUseCase,
-          useValue: { execute: jest.fn() },
+          useValue: { execute: jest.fn().mockResolvedValue(undefined) },
         },
         {
           provide: RedisService,
-          useValue: { deleteSession: jest.fn() },
+          useValue: {
+            deleteSession: jest.fn().mockResolvedValue(undefined),
+            saveSession: jest.fn().mockResolvedValue(undefined),
+          },
         },
         {
           provide: MessageService,
-          useValue: { createMessage: jest.fn() },
+          useValue: { createMessage: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: SocketGateway,
+          useValue: { emit: jest.fn() },
         },
       ],
     }).compile();
@@ -88,45 +97,81 @@ describe('EventsService', () => {
     onReadyUseCase = module.get(OnReadyUseCase);
     redisService = module.get(RedisService);
     messageService = module.get(MessageService);
+    socketGateway = module.get(SocketGateway);
 
     jest.clearAllMocks();
   });
 
   describe('onReady', () => {
-    it('deve configurar listener do evento ready e executar OnReadyUseCase', async () => {
-      const spyReady = jest.spyOn(onReadyUseCase, 'execute');
+    it('deve configurar listener do evento ready e executar OnReadyUseCase com sucesso', async () => {
+      // Spies
+      const spyOnReady = jest.spyOn(onReadyUseCase, 'execute');
+      const spySaveSession = jest.spyOn(redisService, 'saveSession');
+      const spySocketEmit = jest.spyOn(socketGateway, 'emit');
 
+      // Inicializa o evento
       service.onReady(mockClient as Client, 'TestClient');
 
+      // Verifica que o listener foi registrado
       expect(mockClient.on).toHaveBeenCalledWith('ready', expect.any(Function));
 
-      // Simula o disparo do evento
-      await mockClient.readyCallback?.();
+      // Simula o disparo do evento ready
+      if (mockClient.readyCallback) {
+        await mockClient.readyCallback();
+        // Aguarda um tick adicional para garantir que todas as operações assíncronas sejam concluídas
+        await new Promise((resolve) => setImmediate(resolve));
+      }
 
-      expect(spyReady).toHaveBeenCalledWith(mockClient as Client, 'TestClient');
+      // Asserções
+      expect(spyOnReady).toHaveBeenCalledWith(
+        mockClient as Client,
+        'TestClient',
+      );
+
+      expect(spySaveSession).toHaveBeenCalledWith(
+        'TestClient',
+        expect.objectContaining({
+          clientName: 'TestClient',
+          status: 'connected',
+          connectionAttempts: 0,
+        }),
+      );
+
+      expect(spySocketEmit).toHaveBeenCalledWith('client-ready', {
+        clientName: 'TestClient',
+      });
     });
   });
 
   describe('onQr', () => {
     it('deve destruir o client quando limite de QR for atingido', async () => {
       emiteQrEventUseCase.execute.mockResolvedValue(true);
-      const spyQr = jest.spyOn(emiteQrEventUseCase, 'execute');
-      const spyDelete = jest.spyOn(redisService, 'deleteSession');
-      const spyDestroy = jest.spyOn(mockClient, 'destroy');
 
+      const spyQr = jest.spyOn(emiteQrEventUseCase, 'execute');
+      mockClient.destroy = jest.fn(); // garante que destroy é mock
+      const spyDestroy = jest.spyOn(mockClient, 'destroy');
+      const spyDelete = jest.spyOn(redisService, 'deleteSession');
+      const spyLogger = jest
+        .spyOn(service['logger'], 'warn')
+        .mockImplementation();
+
+      // Registra evento QR
       service.onQr(mockClient as Client, 'TestClient');
 
       expect(mockClient.on).toHaveBeenCalledWith('qr', expect.any(Function));
 
-      // Simula o disparo do evento QR e aguarda a execução assíncrona
+      // Simula o disparo do evento QR
       await mockClient.qrCallback?.('FAKE_QR_CODE');
 
-      // Aguarda um tick para garantir que as operações assíncronas sejam executadas
+      // Aguarda próxima execução assíncrona se necessário
       await new Promise((resolve) => setImmediate(resolve));
 
       expect(spyQr).toHaveBeenCalledWith('FAKE_QR_CODE', 'TestClient');
       expect(spyDelete).toHaveBeenCalledWith('TestClient');
       expect(spyDestroy).toHaveBeenCalled();
+      expect(spyLogger).toHaveBeenCalledWith(
+        'Cliente TestClient destruído após limite de QR Codes.',
+      );
     });
 
     it('não deve destruir o client quando limite de QR não for atingido', async () => {
@@ -141,10 +186,27 @@ describe('EventsService', () => {
       expect(spyDelete).not.toHaveBeenCalled();
       expect(spyDestroy).not.toHaveBeenCalled();
     });
+
+    it('deve tratar erro durante processamento do QR', async () => {
+      const error = new Error('Erro no processamento QR');
+      emiteQrEventUseCase.execute.mockRejectedValue(error);
+      const spyLogger = jest
+        .spyOn(service['logger'], 'error')
+        .mockImplementation();
+
+      service.onQr(mockClient as Client, 'TestClient');
+
+      await mockClient.qrCallback?.('FAKE_QR_CODE');
+
+      expect(spyLogger).toHaveBeenCalledWith(
+        'Erro ao processar QR para TestClient:',
+        error,
+      );
+    });
   });
 
   describe('onMessageCreate', () => {
-    it('deve configurar listener do evento message_create e salvar mensagem', () => {
+    it('deve configurar listener do evento message_create e salvar mensagem', async () => {
       const mockMessage: Message = {
         from: '5511999999999@c.us',
         to: '5511888888888@c.us',
@@ -153,6 +215,10 @@ describe('EventsService', () => {
       } as Message;
 
       const spyCreateMessage = jest.spyOn(messageService, 'createMessage');
+      const spySocketEmit = jest.spyOn(socketGateway, 'emit');
+      const spyLogger = jest
+        .spyOn(service['logger'], 'log')
+        .mockImplementation();
 
       service.onMessageCreate(mockClient as Client, 'TestClient');
 
@@ -164,18 +230,31 @@ describe('EventsService', () => {
       // Simula o disparo do evento
       mockClient.messageCallback?.(mockMessage);
 
-      expect(spyCreateMessage).toHaveBeenCalledWith({
+      // Aguarda operações assíncronas
+      await new Promise((resolve) => setImmediate(resolve));
+
+      const expectedMessage = {
         from: '5511999999999@c.us',
         to: '5511888888888@c.us',
         content: 'Olá mundo',
         status: 'received',
         messageId: 'msg_123456',
-      });
+      };
+
+      expect(spyLogger).toHaveBeenCalledWith(
+        'Mensagem recebida do cliente TestClient | De: 5511999999999@c.us | Conteúdo: Olá mundo',
+      );
+      expect(spyCreateMessage).toHaveBeenCalledWith(expectedMessage);
+      expect(spySocketEmit).toHaveBeenCalledWith('newMessage', expectedMessage);
     });
   });
 
   describe('onAuthenticated', () => {
     it('deve configurar listener do evento authenticated', () => {
+      const spyLogger = jest
+        .spyOn(service['logger'], 'log')
+        .mockImplementation();
+
       service.onAuthenticated(mockClient as Client, 'TestClient');
 
       expect(mockClient.on).toHaveBeenCalledWith(
@@ -186,12 +265,18 @@ describe('EventsService', () => {
       // Simula o disparo do evento
       mockClient.authenticatedCallback?.();
 
-      // Não há comportamento específico além do log, então apenas verificamos se o listener foi configurado
+      expect(spyLogger).toHaveBeenCalledWith(
+        'Cliente TestClient autenticado com sucesso!',
+      );
     });
   });
 
   describe('onDisconnected', () => {
     it('deve configurar listener do evento disconnected', () => {
+      const spyLogger = jest
+        .spyOn(service['logger'], 'warn')
+        .mockImplementation();
+
       service.onDisconnected(mockClient as Client, 'TestClient');
 
       expect(mockClient.on).toHaveBeenCalledWith(
@@ -201,11 +286,19 @@ describe('EventsService', () => {
 
       // Simula o disparo do evento
       mockClient.disconnectedCallback?.('NAVIGATION');
+
+      expect(spyLogger).toHaveBeenCalledWith(
+        'Cliente TestClient desconectado: NAVIGATION',
+      );
     });
   });
 
   describe('onAuthFailure', () => {
     it('deve configurar listener do evento auth_failure', () => {
+      const spyLogger = jest
+        .spyOn(service['logger'], 'error')
+        .mockImplementation();
+
       service.onAuthFailure(mockClient as Client, 'TestClient');
 
       expect(mockClient.on).toHaveBeenCalledWith(
@@ -215,11 +308,34 @@ describe('EventsService', () => {
 
       // Simula o disparo do evento
       mockClient.authFailureCallback?.('Authentication failed');
+
+      expect(spyLogger).toHaveBeenCalledWith(
+        'Falha na autenticação do TestClient: Authentication failed',
+      );
+    });
+
+    it('deve configurar listener do evento auth_failure com mensagem vazia', () => {
+      const spyLogger = jest
+        .spyOn(service['logger'], 'error')
+        .mockImplementation();
+
+      service.onAuthFailure(mockClient as Client, 'TestClient');
+
+      // Simula o disparo do evento sem mensagem
+      mockClient.authFailureCallback?.('');
+
+      expect(spyLogger).toHaveBeenCalledWith(
+        'Falha na autenticação do TestClient: Authentication failed',
+      );
     });
   });
 
   describe('onChangeState', () => {
     it('deve configurar listener do evento change_state', () => {
+      const spyLogger = jest
+        .spyOn(service['logger'], 'log')
+        .mockImplementation();
+
       service.onChangeState(mockClient as Client, 'TestClient');
 
       expect(mockClient.on).toHaveBeenCalledWith(
@@ -229,6 +345,23 @@ describe('EventsService', () => {
 
       // Simula o disparo do evento
       mockClient.changeStateCallback?.('CONNECTED');
+
+      expect(spyLogger).toHaveBeenCalledWith(
+        'Estado do client TestClient mudou: CONNECTED',
+      );
+    });
+  });
+
+  describe('activeClients Map', () => {
+    it('deve adicionar client ao Map após evento ready', async () => {
+      service.onReady(mockClient as Client, 'TestClient');
+
+      await mockClient.readyCallback?.();
+
+      // Verifica se o client foi adicionado ao Map interno (através de reflection)
+      const activeClients = service['activeClients'];
+      expect(activeClients.has('TestClient')).toBe(true);
+      expect(activeClients.get('TestClient')).toBe(mockClient);
     });
   });
 });
