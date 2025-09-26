@@ -143,6 +143,8 @@ describe('EventsService', () => {
     });
   });
 
+  //aqui
+
   describe('onQr', () => {
     it('deve destruir o client quando limite de QR for atingido', async () => {
       emiteQrEventUseCase.execute.mockResolvedValue(true);
