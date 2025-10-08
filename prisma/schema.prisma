@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model KolekUser {
+  id                 Int                  @id @default(autoincrement())
+  name               String
+  email              String               @unique
+  slackId            String               @unique
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime
+  UserFileValidation UserFileValidation[]
+}
+
+model User {
+  id                    Int                 @id @default(autoincrement())
+  email                 String?
+  cnpj                  String              @unique
+  cnaeCode              String?
+  foundationDate        DateTime?
+  name                  String?
+  corporateName         String?
+  contact               String?
+  cpf                   String?
+  businessId            String?
+  dealId                Int?
+  addressPostalCode     String?
+  addressState          String?
+  addressCity           String?
+  addressNeighborhood   String?
+  addressStreet         String?
+  addressNumber         String?
+  representativeData    Json?
+  financeEmail          String?
+  files                 Json?
+  digitalAccountPayload Json?
+  pixFee                Float?
+  invoiceFee            Float?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime
+  createDigitalAccount  Boolean             @default(false)
+  pipedriveData         Json?
+  UserFileValidation    UserFileValidation?
+
+  @@index([cnpj])
+}
+
+model UserFileValidation {
+  id               Int        @id @default(autoincrement())
+  cnpj             String     @unique
+  messageId        String
+  isValid          Boolean    @default(false)
+  validatedBy      Int?
+  validatedAt      DateTime?
+  rejectionDetails Json?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime
+  User             User       @relation(fields: [cnpj], references: [cnpj])
+  KolekUser        KolekUser? @relation(fields: [validatedBy], references: [id])
+}
